@@ -1,114 +1,204 @@
-JWT Authentication System:
+# JWT Authentication System (MERN Stack)
 
-A secure authentication system built using Node.js, Express.js, MongoDB, Mongoose, bcryptjs, and JSON Web Tokens (JWT).
+A full-stack JWT Authentication System built using React, Node.js, Express.js, MongoDB, and JSON Web Tokens (JWT).
 
-Features:
-User Registration
-User Login
-Password Hashing using bcrypt
-JWT Token Generation
-Protected Routes using Middleware
-User Profile Endpoint
-MongoDB Atlas Integration
-Tech Stack
-Node.js
-Express.js
-MongoDB Atlas
-Mongoose
-bcryptjs
-JSON Web Token (JWT)
-Thunder Client (API Testing)
-API Endpoints
-Register User
+## Features
+
+### Authentication
+
+* User Registration
+* User Login
+* Password Hashing with bcryptjs
+* JWT Token Generation
+* Protected Routes
+* User Profile Access
+* Logout Functionality
+
+### Frontend
+
+* React.js
+* React Router DOM
+* Axios API Requests
+* Protected Pages
+* Local Storage Token Management
+* Responsive UI
+
+### Backend
+
+* Node.js
+* Express.js
+* MongoDB Atlas
+* Mongoose
+* JWT Authentication Middleware
+* Environment Variables Support
+
+## Tech Stack
+
+### Frontend
+
+* React
+* React Router DOM
+* Axios
+
+### Backend
+
+* Node.js
+* Express.js
+* MongoDB
+* Mongoose
+* bcryptjs
+* jsonwebtoken
+* dotenv
+* cors
+
+## Project Structure
+
+```text
+auth-system/
+│
+├── client/
+│   ├── src/
+│   │   ├── pages/
+│   │   ├── components/
+│   │   ├── App.jsx
+│   │   └── main.jsx
+│
+├── controllers/
+├── middleware/
+├── models/
+├── routes/
+├── server.js
+├── .env
+└── README.md
+```
+
+## Installation
+
+### Clone Repository
+
+```bash
+git clone <repository-url>
+cd auth-system
+```
+
+### Install Backend Dependencies
+
+```bash
+npm install
+```
+
+### Install Frontend Dependencies
+
+```bash
+cd client
+npm install
+```
+
+## Environment Variables
+
+Create a `.env` file in the root directory:
+
+```env
+PORT=5000
+
+MONGO_URI=your_mongodb_connection_string
+
+JWT_SECRET=your_secret_key
+```
+
+## Running Backend
+
+```bash
+npm run dev
+```
+
+Backend runs on:
+
+```text
+http://localhost:5000
+```
+
+## Running Frontend
+
+Open another terminal:
+
+```bash
+cd client
+npm run dev
+```
+
+Frontend runs on:
+
+```text
+http://localhost:5173
+```
+
+## API Endpoints
+
+### Register User
+
+```http
 POST /api/auth/register
+```
 
 Request Body:
 
+```json
 {
   "name": "Komal",
   "email": "komal@gmail.com",
-  "password": "123456"
+  "password": "password123"
 }
-Login User
+```
+
+### Login User
+
+```http
 POST /api/auth/login
+```
 
 Request Body:
 
+```json
 {
   "email": "komal@gmail.com",
-  "password": "123456"
+  "password": "password123"
 }
+```
 
-Response:
+### Get Profile
 
-{
-  "success": true,
-  "token": "JWT_TOKEN"
-}
-Get User Profile
+```http
 GET /api/auth/profile
+```
 
 Headers:
 
-Authorization: Bearer JWT_TOKEN
+```text
+Authorization: Bearer <token>
+```
 
-Response:
+## Learning Outcomes
 
-{
-  "success": true,
-  "user": {
-    "_id": "...",
-    "name": "Komal",
-    "email": "komal@gmail.com"
-  }
-}
-Authentication Flow:
-User registers with name, email, and password.
-Password is hashed using bcrypt before being stored in MongoDB.
-User logs in using email and password.
-Password is verified using bcrypt.compare().
-A JWT token is generated upon successful login.
-The token is sent with protected requests.
-Middleware verifies the token and grants access to authorized users.
-Installation
+* Authentication using JWT
+* Password Encryption with bcrypt
+* Protected Routes
+* React State Management
+* API Integration using Axios
+* Full-Stack MERN Development
+* MongoDB Atlas Integration
 
-Clone the repository:
+## Future Improvements
 
-git clone <repository-url>
+* Refresh Tokens
+* Forgot Password
+* Email Verification
+* Google Authentication
+* Role-Based Authorization
+* Dashboard UI
+* Profile Picture Upload
 
-Install dependencies:
+## Author
 
-npm install
-
-Create a .env file:
-
-PORT=5000
-MONGO_URI=your_mongodb_connection_string
-JWT_SECRET=your_secret_key
-
-Start the server:
-
-npm run dev
-Learning Outcomes
-
-This project helped me understand:
-
-REST APIs
-Authentication & Authorization
-Password Security
-JWT-based Authentication
-Express Middleware
-MongoDB & Mongoose
-Backend Project Structure
-Future Improvements
-Update Profile
-Change Password
-Password Reset
-Refresh Tokens
-Role-Based Access Control
-Input Validation
-
-
-Author:
 Komal Ahuja
-B.Tech Student | Aspiring Full-Stack Developer
+B.Tech Student | MERN Stack Developer

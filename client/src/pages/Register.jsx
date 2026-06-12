@@ -54,7 +54,7 @@ function Register() {
       <button  className="w-full bg-black text-white p-3 rounded-lg" onClick={handleSubmit}>Register</button>
       <p>
   Click to login{" "}
-  <Link to="/login">Login</Link>
+  <Link to="/login" className="text-blue-500 font-semibold hover:text-red-500 transition duration-300">Login</Link>
 </p>
     </div>
     </div>

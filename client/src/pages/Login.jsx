@@ -32,7 +32,7 @@ function Login() {
 
   return (
     <>
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-blue-100 to-purple-100">
         <div className="bg-white p-8 rounded-2xl shadow-xl w-96">
           <h1 className="text-3xl font-bold text-center mb-6">Login</h1>
 
@@ -60,12 +60,13 @@ function Login() {
             {" "}
             {loading ? "Logging in..." : "Login"}
           </button>
-        </div>
-      </div>
+       
 
       <p>
-        Don't have an account? <Link to="/">Register</Link>
+        Don't have an account? <Link to="/" className="text-blue-500 font-semibold hover:text-red-500 transition duration-300">Register</Link>
       </p>
+       </div>
+      </div>
     </>
   );
 }
