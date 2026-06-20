@@ -13,7 +13,7 @@ function Profile() {
           navigate("/login");
           return;
         }
-        const res = await axios.get("http://localhost:5000/api/auth/profile", {
+        const res = await axios.get(import.meta.env.VITE_API_URL || "http://localhost:5000", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
