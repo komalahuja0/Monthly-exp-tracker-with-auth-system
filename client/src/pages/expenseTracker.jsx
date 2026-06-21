@@ -284,6 +284,7 @@ function ExpenseTracker() {
                       value={entry.date}
                       onChange={(e) => handleEntryChange(i, "date", e.target.value)}
                       onBlur={() => persist(entries, budget)}
+                      placeholder="Date of exp."
                       className="text-xs text-[#0F1B2D]/50 outline-none bg-transparent w-28"
                     />
                     <input
@@ -292,7 +293,7 @@ function ExpenseTracker() {
                       onChange={(e) => handleEntryChange(i, "name", e.target.value)}
                       onBlur={() => persist(entries, budget)}
                       placeholder="What did you spend on?"
-                      className="flex-1 outline-none bg-transparent text-sm text-[#0F1B2D] placeholder:text-[#0F1B2D]/30"
+                      className="flex-1 outline-none bg-transparent text-sm text-[#0F1B2D] placeholder:text-black"
                     />
                     <div className="flex items-center gap-1 text-[#0F1B2D]/35">
                       <span className="text-xs">₹</span>
@@ -301,7 +302,7 @@ function ExpenseTracker() {
                         value={entry.amount}
                         onChange={(e) => handleEntryChange(i, "amount", e.target.value)}
                         onBlur={() => persist(entries, budget)}
-                        placeholder="0"
+                        placeholder="Enter amt."
                         className="w-16 text-right outline-none bg-transparent text-sm text-[#0F1B2D] tabular-nums"
                       />
                     </div>
