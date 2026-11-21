@@ -1,72 +1,75 @@
 import { useState } from "react";
 import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
+import AuthShell from "../components/AuthShell";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 function Login() {
   const navigate = useNavigate();
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const login = async () => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
     try {
       setLoading(true);
-
-      const res = await axios.post(`${API}/api/auth/login`, {
-        email,
-        password,
-      });
-
+      const res = await axios.post(`${API}/api/auth/login`, { email, password });
       localStorage.setItem("token", res.data.token);
-
       navigate("/expenses");
-    } catch (error) {
-      alert(error.response?.data?.message || "Login failed");
+    } catch (err) {
+      setError(err.response?.data?.message || "Couldn’t sign in. Check your connection and try again.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <>
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-blue-100 to-purple-100">
-        <div className="bg-white p-8 rounded-2xl shadow-xl w-96">
-          <h1 className="text-3xl font-bold text-center mb-6">Login</h1>
-
+    <AuthShell
+      title="Welcome back"
+      subtitle="Sign in to continue tracking your expenses."
+      footer={
+        <>
+          New to BudgetBuddy? <Link to="/" className="bb-link">Create an account</Link>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <label className="bb-field">
+          <span>Email</span>
           <input
             type="email"
-            placeholder="Email"
+            autoComplete="email"
+            required
+            placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full p-3 border rounded-lg mb-4"
+            className="bb-input"
           />
-
+        </label>
+        <label className="bb-field">
+          <span>Password</span>
           <input
             type="password"
-            placeholder="Password"
+            autoComplete="current-password"
+            required
+            placeholder="Enter your password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full p-3 border rounded-lg mb-4"
+            className="bb-input"
           />
+        </label>
 
-          <button
-            onClick={login}
-            disabled={loading}
-            className="w-full bg-black text-white p-3 rounded-lg"
-          >
-            {" "}
-            {loading ? "Logging in..." : "Login"}
-          </button>
+        {error && <div className="bb-alert bb-alert-error" role="alert">{error}</div>}
 
-      <p>
-        Don't have an account? <Link to="/" className="text-blue-500 font-semibold hover:text-red-500 transition duration-300">Register</Link>
-      </p>
-       </div>
-      </div>
-    </>
+        <button type="submit" disabled={loading} className="bb-btn bb-btn-primary w-full">
+          {loading ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
+    </AuthShell>
   );
 }
 

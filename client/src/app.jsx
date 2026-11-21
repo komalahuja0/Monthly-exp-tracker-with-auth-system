@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Register from "./pages/Register";
 import Login from "./pages/Login";
 import Logout from "./pages/Logout";
@@ -14,8 +14,10 @@ function App() {
         <Route path="/profile" element={<Profile />} />
         <Route path="/logout" element={<Logout />} />
         <Route path="/expenses" element={<ExpenseTracker />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
 }
+
 export default App;

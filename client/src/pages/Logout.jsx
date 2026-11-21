@@ -1,41 +1,28 @@
 import { useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
+import Logo from "../components/Logo";
 
 function Logout() {
-  const navigate = useNavigate();
   useEffect(() => {
     localStorage.removeItem("token");
-    const timer = setTimeout(() => {
-      navigate("/login");
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [navigate]);
+  }, []);
 
   return (
-    <div className="min-h-screen bg-[#F4F2EE] flex items-center justify-center px-4">
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap"
-      />
-      <div
-        className="bg-white p-7 rounded-xl border border-black/5 w-full max-w-sm text-center"
-        style={{ fontFamily: "Inter, sans-serif" }}
-      >
-        <h1
-          className="text-xl text-[#0F1B2D] mb-2"
-          style={{ fontFamily: "Fraunces, serif", fontWeight: 600 }}
+    <div className="min-h-screen flex flex-col items-center justify-center px-5">
+      <div className="mb-10"><Logo to="/login" /></div>
+      <div className="bb-card w-full max-w-[400px] p-9 text-center">
+        <div
+          className="mx-auto mb-5 w-12 h-12 rounded-full flex items-center justify-center"
+          style={{ background: "var(--accent-soft)" }}
+          aria-hidden="true"
         >
-          Logged out!!
-        </h1>
-        <p className="text-sm text-[#0F1B2D]/50 mb-5">
-          You've been logged out successfully.
-        </p>
-        <Link
-          to="/login"
-          className="block w-full text-center bg-[#0F1B2D] text-white text-sm font-medium py-2.5 rounded-lg hover:bg-[#0F1B2D]/90 transition"
-        >
-          Login again
-        </Link>
+          <svg width="22" height="22" viewBox="0 0 22 22">
+            <path d="M5 11.5l4 4 8-9" fill="none" stroke="#0a6b50" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+        <h1 className="bb-display bb-h1 m-0 text-[1.5rem]">You’ve been signed out</h1>
+        <p className="mt-2 mb-7 bb-muted">Your session has ended on this device. Your data is saved and waiting for you.</p>
+        <Link to="/login" className="bb-btn bb-btn-primary w-full">Sign in again</Link>
       </div>
     </div>
   );

@@ -1,11 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
-import { useNavigate, Link } from "react-router-dom";
-
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
+import { useNavigate } from "react-router-dom";
+import AppShell from "../components/AppShell";
+import { MONTHS, currency } from "../utils/format";
 
 const daysInMonth = (month, year) => {
   if (!month) return 30;
@@ -19,7 +16,9 @@ const daysInMonth = (month, year) => {
 };
 
 const emptyEntry = () => ({ name: "", amount: "", date: "" });
+const isValid = (e) => e.name.trim() !== "" && e.amount !== "";
 const API = `${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api`;
+
 
 function ExpenseTracker() {
   const navigate = useNavigate();
@@ -30,29 +29,54 @@ function ExpenseTracker() {
   const [budget, setBudget] = useState("");
   const [entries, setEntries] = useState([emptyEntry()]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [saveState, setSaveState] = useState("idle");
+  const [dirty, setDirty] = useState(false);
 
   const [insight, setInsight] = useState("");
+  const [insightSnapshot, setInsightSnapshot] = useState("");
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insightError, setInsightError] = useState("");
 
+  const token = localStorage.getItem("token");
   const days = daysInMonth(month, year);
-  const totalSpent = entries.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
-  const moneyLeft = (parseFloat(budget) || 0) - totalSpent;
 
-  // "Days left" is driven entirely by the latest date entered against any
-  // entry — not today's real calendar date. If no entry has a date yet,
-  // we show the full days-in-month as remaining.
+  const budgetNum = parseFloat(budget) || 0;
+  const totalSpent = entries.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+  const moneyLeft = budgetNum - totalSpent;
+  const percentUsed = budgetNum > 0 ? (totalSpent / budgetNum) * 100 : 0;
+  const progressClass = percentUsed > 100 ? "over" : percentUsed >= 85 ? "warn" : "";
+
+  // "Days left" is driven by the latest date entered against any entry,
+  // not today's calendar date. With no dates yet, the full month remains.
   const entryDays = entries
     .map((e) => (e.date ? parseInt(e.date.split("-")[2], 10) : null))
     .filter((d) => d !== null && !isNaN(d));
   const latestDay = entryDays.length > 0 ? Math.max(...entryDays) : 0;
   const remainingDays = Math.max(days - latestDay, 1);
-  const dailyBudgetLeft = remainingDays > 0 ? moneyLeft / remainingDays : moneyLeft;
+  const dailyBudgetLeft = moneyLeft / remainingDays;
 
-  const token = localStorage.getItem("token");
+  // Used to tell whether the AI summary still matches what's on screen.
+  const dataKey = JSON.stringify([budgetNum, entries.filter(isValid).map((e) => [e.name.trim(), e.amount, e.date])]);
+  const insightStale = insight !== "" && insightSnapshot !== dataKey;
+
+  const statusLabel =
+    saveState === "saving" ? "Saving…"
+    : saveState === "error" ? "Couldn’t save changes"
+    : dirty ? "Unsaved changes"
+    : saveState === "saved" ? "All changes saved"
+    : "";
 
   useEffect(() => {
     if (!token) navigate("/login");
   }, [token, navigate]);
+
+  // Warn before closing the tab with unsaved changes.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   const fetchMonth = useCallback(async () => {
     try {
@@ -73,6 +97,10 @@ function ExpenseTracker() {
         setEntries([emptyEntry()]);
       }
       setInsight("");
+      setInsightSnapshot("");
+      setInsightError("");
+      setSaveState("idle");
+      setDirty(false);
     } catch (error) {
       console.log(error);
     } finally {
@@ -87,280 +115,326 @@ function ExpenseTracker() {
   const persist = useCallback(
     async (entriesToSave, budgetToSave) => {
       try {
+        setSaveState("saving");
         const cleanEntries = entriesToSave
-          .filter((e) => e.name.trim() !== "" && e.amount !== "")
+          .filter(isValid)
           .map((e) => ({ name: e.name.trim(), amount: parseFloat(e.amount), date: e.date || "" }));
 
         await axios.post(
           `${API}/expenses`,
-          {
-            month,
-            year,
-            budget: parseFloat(budgetToSave) || 0,
-            daysInMonth: days,
-            entries: cleanEntries,
-          },
+          { month, year, budget: parseFloat(budgetToSave) || 0, daysInMonth: days, entries: cleanEntries },
           { headers: { Authorization: `Bearer ${token}` } }
         );
+        setSaveState("saved");
+        setDirty(false);
+        return true;
       } catch (error) {
         console.log(error);
+        setSaveState("error");
+        return false;
       }
     },
     [month, year, days, token]
   );
 
   const handleEntryChange = (index, field, value) => {
-    const next = [...entries];
-    next[index][field] = value;
-    setEntries(next);
+    setEntries((prev) => prev.map((e, i) => (i === index ? { ...e, [field]: value } : e)));
+    setDirty(true);
   };
 
   const addEntry = () => setEntries([...entries, emptyEntry()]);
 
-  // Deleting recalculates instantly (state updates trigger the derived totals above)
-  // and also saves the new state to the backend automatically.
   const removeEntry = (index) => {
     const next = entries.filter((_, i) => i !== index);
     const finalEntries = next.length > 0 ? next : [emptyEntry()];
     setEntries(finalEntries);
-    persist(finalEntries, budget);
+    setDirty(true);
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    await persist(entries, budget);
-    setSaving(false);
+  const handleSave = () => persist(entries, budget);
+
+  const handleMonthChange = (e) => {
+    if (dirty && !window.confirm("You have unsaved changes. Switch month and discard them?")) return;
+    setMonth(parseInt(e.target.value));
   };
 
-  const handleGetInsight = () => {
-    const validEntries = entries.filter((e) => e.name.trim() !== "" && e.amount !== "");
-    const budgetNum = parseFloat(budget) || 0;
-
-    if (validEntries.length === 0) {
-      setInsight("Add a few expenses first and I'll find patterns for you.");
+  const handleGetInsight = async () => {
+    setInsightError("");
+    if (!entries.some(isValid)) {
+      setInsightError("Add at least one expense to get a summary.");
       return;
     }
-
     if (!budgetNum) {
-      setInsight("Set a monthly budget above so I can tell you how you're tracking.");
+      setInsightError("Set a monthly budget to get a summary.");
       return;
     }
-
-    const sorted = [...validEntries].sort(
-      (a, b) => parseFloat(b.amount) - parseFloat(a.amount)
-    );
-    const biggest = sorted[0];
-    const biggestShare = ((parseFloat(biggest.amount) / totalSpent) * 100).toFixed(0);
-    const percentUsed = ((totalSpent / budgetNum) * 100).toFixed(0);
-    const dailyText =
-      moneyLeft >= 0
-        ? `At this pace, you can spend about ${currency(dailyBudgetLeft)}/day for the rest of the month.`
-        : `You're ${currency(Math.abs(moneyLeft))} over your budget already.`;
-
-    const status =
-      percentUsed >= 100
-        ? `You've used ${percentUsed}% of your budget.`
-        : percentUsed >= 75
-        ? `You've used ${percentUsed}% of your budget — getting close to the limit.`
-        : `You've used ${percentUsed}% of your budget so far, which is on track.`;
-
-    setInsight(
-      `${status} Your biggest expense is "${biggest.name}" at ${currency(
-        parseFloat(biggest.amount)
-      )} — that's ${biggestShare}% of everything you've spent this month. ${dailyText}`
-    );
+    try {
+      setInsightLoading(true);
+      // Make sure the server has the latest numbers before it analyses them.
+      const saved = await persist(entries, budget);
+      if (!saved) throw new Error("save failed");
+      const res = await axios.get(`${API}/ai/insights/${month}/${year}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setInsight(res.data.insight || "");
+      setInsightSnapshot(dataKey);
+    } catch (error) {
+      console.log(error);
+      setInsightError("Couldn’t generate a summary right now. Try again in a moment.");
+    } finally {
+      setInsightLoading(false);
+    }
   };
-
-  const currency = (n) =>
-    `₹${(Number.isFinite(n) ? n : 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 
   return (
-    <div className="min-h-screen bg-[#F4F2EE]">
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap"
-      />
-
-      {/* Top bar */}
-      <header className="border-b border-black/5 bg-white">
-        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
-          <h1
-            className="text-lg text-[#0F1B2D]"
-            style={{ fontFamily: "Fraunces, serif", fontWeight: 600 }}
-          >
-            BudgetBuddy
-          </h1>
-          <nav className="flex items-center gap-2 text-sm" style={{ fontFamily: "Inter, sans-serif" }}>
-            <Link
-              to="/profile"
-              className="px-3 py-1.5 rounded-md text-[#0F1B2D]/70 hover:bg-[#0F1B2D]/5 hover:text-[#0F1B2D] transition"
-            >
-              Profile
-            </Link>
-            <Link
-              to="/logout"
-              className="px-3 py-1.5 rounded-md text-[#0F1B2D]/70 hover:bg-[#0F1B2D]/5 hover:text-[#0F1B2D] transition"
-            >
-              Log out
-            </Link>
-          </nav>
+    <AppShell>
+      {/* Page header */}
+      <div className="flex flex-wrap items-end justify-between gap-4 mb-7">
+        <div>
+          <h1 className="bb-display bb-h1 m-0">Expenses</h1>
+          <p className="mt-1.5 mb-0 bb-muted">Track what you spend against your monthly budget.</p>
         </div>
-      </header>
-
-      <main className="max-w-3xl mx-auto px-6 py-8" style={{ fontFamily: "Inter, sans-serif" }}>
-        {/* Month + days row */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <span
+            className="text-sm bb-muted min-w-[9.5rem] text-right"
+            style={saveState === "error" ? { color: "var(--danger)" } : dirty ? { color: "var(--warn)" } : undefined}
+            role="status"
+            aria-live="polite"
+          >
+            {statusLabel}
+          </span>
+          <label className="sr-only" htmlFor="month">Month</label>
           <select
+            id="month"
             value={month}
-            onChange={(e) => setMonth(parseInt(e.target.value))}
-            className="text-lg bg-transparent border-none outline-none cursor-pointer text-[#0F1B2D]"
-            style={{ fontFamily: "Fraunces, serif", fontWeight: 600 }}
+            onChange={handleMonthChange}
+            className="bb-input"
+            style={{ width: "auto", fontWeight: 600, paddingRight: "0.5rem" }}
           >
             {MONTHS.map((m, i) => (
-              <option key={m} value={i + 1}>
-                {m} {year}
-              </option>
+              <option key={m} value={i + 1}>{m} {year}</option>
             ))}
           </select>
-          <span className="text-sm text-[#0F1B2D]/50">{days} days</span>
         </div>
+      </div>
 
-        {loading ? (
-          <p className="text-[#0F1B2D]/50 text-sm">Loading…</p>
-        ) : (
-          <div className="space-y-5">
-            {/* Budget + summary in one calm row */}
-            <div className="bg-white rounded-xl border border-black/5 p-5 grid grid-cols-3 divide-x divide-black/5">
-              <div>
-                <label className="block text-[11px] uppercase tracking-wide text-[#0F1B2D]/40 mb-1">
-                  Budget
-                </label>
-                <div className="flex items-center gap-1">
-                  <span className="text-[#0F1B2D]/30 text-sm">₹</span>
+      {loading ? (
+        <div className="space-y-5" aria-busy="true">
+          <div className="bb-skeleton h-36 w-full" style={{ borderRadius: 14 }} />
+          <div className="bb-skeleton h-72 w-full" style={{ borderRadius: 14 }} />
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Summary */}
+          <section className="bb-card p-6 sm:p-7" aria-label="Monthly summary">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-0 sm:divide-x bb-divider">
+              <div className="sm:pr-8">
+                <label htmlFor="budget" className="bb-label">Monthly budget</label>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="bb-display text-[1.5rem] font-semibold bb-muted">₹</span>
                   <input
+                    id="budget"
                     type="number"
+                    min="0"
+                    inputMode="decimal"
                     value={budget}
-                    onChange={(e) => setBudget(e.target.value)}
-                    onBlur={() => persist(entries, budget)}
+                    onChange={(e) => { setBudget(e.target.value); setDirty(true); }}
                     placeholder="0"
-                    className="w-full outline-none bg-transparent text-[#0F1B2D] font-medium"
+                    className="bb-display bb-num w-full text-[1.75rem] font-semibold bg-transparent border-0 outline-none p-0"
+                    style={{ color: "var(--ink)", MozAppearance: "textfield" }}
                   />
                 </div>
               </div>
-              <div className="pl-4">
-                <label className="block text-[11px] uppercase tracking-wide text-[#0F1B2D]/40 mb-1">
-                  Spent
-                </label>
-                <p className="font-medium text-[#0F1B2D]">{currency(totalSpent)}</p>
+              <div className="sm:px-8">
+                <p className="bb-label m-0">Spent</p>
+                <p className="bb-display bb-num m-0 mt-1 text-[1.75rem] font-semibold">{currency(totalSpent)}</p>
               </div>
-              <div className="pl-4">
-                <label className="block text-[11px] uppercase tracking-wide text-[#0F1B2D]/40 mb-1">
-                  Left
-                </label>
-                <p className={`font-medium ${moneyLeft < 0 ? "text-[#B45309]" : "text-[#0E7C5A]"}`}>
-                  {currency(moneyLeft)}
+              <div className="sm:pl-8">
+                <p className="bb-label m-0">{moneyLeft < 0 ? "Over budget by" : "Remaining"}</p>
+                <p
+                  className="bb-display bb-num m-0 mt-1 text-[1.75rem] font-semibold"
+                  style={{ color: moneyLeft < 0 ? "var(--danger)" : "var(--accent)" }}
+                >
+                  {currency(Math.abs(moneyLeft))}
                 </p>
               </div>
             </div>
 
+            <div className="mt-6">
+              <div
+                className={`bb-progress ${progressClass}`}
+                role="progressbar"
+                aria-label="Budget used"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(Math.min(percentUsed, 100))}
+              >
+                <div style={{ width: `${Math.min(percentUsed, 100)}%` }} />
+              </div>
+              <p className="mt-2 mb-0 text-sm bb-muted bb-num">
+                {budgetNum > 0 ? `${Math.round(percentUsed)}% of your budget used` : "Set a budget to see your progress"}
+              </p>
+            </div>
+          </section>
+
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] items-start">
             {/* Entries */}
-            <div className="bg-white rounded-xl border border-black/5 overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-black/5 flex items-center justify-between">
-                <span className="text-[11px] uppercase tracking-wide text-[#0F1B2D]/40">
-                  Entries
+            <section className="bb-card overflow-hidden" aria-label="Expense entries">
+              <div className="px-5 py-4 flex items-center justify-between border-b bb-divider">
+                <h2 className="bb-h2 m-0">Transactions</h2>
+                <span className="text-sm bb-muted bb-num">
+                  {entries.filter(isValid).length} {entries.filter(isValid).length === 1 ? "entry" : "entries"}
                 </span>
-                <span className="text-[11px] text-[#0F1B2D]/30">{entries.length}</span>
               </div>
 
-              <ol>
+              <div className="hidden sm:flex items-center gap-2 px-5 pt-3 pb-1 bb-label">
+                <span className="w-[9.5rem] pl-2.5">Date</span>
+                <span className="flex-1 pl-2.5">Description</span>
+                <span className="w-32 pr-2.5 text-right">Amount (₹)</span>
+                <span className="w-9" />
+              </div>
+
+              <ul className="list-none m-0 p-0 px-3 pb-2">
                 {entries.map((entry, i) => (
-                  <li
-                    key={i}
-                    className="flex items-center gap-2 px-4 py-2 border-b border-black/5 last:border-b-0 group"
-                  >
-                    <span className="text-xs text-[#0F1B2D]/25 w-4 tabular-nums">{i + 1}</span>
-                    <input
-                      type="date"
-                      value={entry.date}
-                      onChange={(e) => handleEntryChange(i, "date", e.target.value)}
-                      onBlur={() => persist(entries, budget)}
-                      placeholder="Date of exp."
-                      className="text-xs text-[#0F1B2D]/50 outline-none bg-transparent w-28"
-                    />
+                  <li key={i} className="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-1 px-2 py-2 sm:py-1 border-b bb-divider last:border-b-0">
                     <input
                       type="text"
+                      aria-label={`Description for entry ${i + 1}`}
                       value={entry.name}
                       onChange={(e) => handleEntryChange(i, "name", e.target.value)}
-                      onBlur={() => persist(entries, budget)}
                       placeholder="What did you spend on?"
-                      className="flex-1 outline-none bg-transparent text-sm text-[#0F1B2D] placeholder:text-black"
+                      className="bb-cell order-first w-full sm:order-none sm:flex-1"
                     />
-                    <div className="flex items-center gap-1 text-[#0F1B2D]/35">
-                      <span className="text-xs">₹</span>
-                      <input
-                        type="number"
-                        value={entry.amount}
-                        onChange={(e) => handleEntryChange(i, "amount", e.target.value)}
-                        onBlur={() => persist(entries, budget)}
-                        placeholder="Enter amt."
-                        className="w-16 text-right outline-none bg-transparent text-sm text-[#0F1B2D] tabular-nums"
-                      />
-                    </div>
+                    <input
+                      type="date"
+                      aria-label={`Date for entry ${i + 1}`}
+                      value={entry.date}
+                      onChange={(e) => handleEntryChange(i, "date", e.target.value)}
+                      className="bb-cell w-[9.5rem] sm:order-first"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      aria-label={`Amount for entry ${i + 1}`}
+                      value={entry.amount}
+                      onChange={(e) => handleEntryChange(i, "amount", e.target.value)}
+                      placeholder="0.00"
+                      className="bb-cell flex-1 sm:flex-none sm:w-32"
+                    />
                     <button
+                      type="button"
                       onClick={() => removeEntry(i)}
-                      aria-label="Delete entry"
-                      className="text-[#0F1B2D]/25 hover:text-[#B45309] transition opacity-0 group-hover:opacity-100 text-sm px-1"
+                      aria-label={`Delete entry ${i + 1}`}
+                      className="bb-iconbtn"
                     >
-                      ✕
+                      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                        <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                      </svg>
                     </button>
                   </li>
                 ))}
-              </ol>
+              </ul>
 
-              <button
-                onClick={addEntry}
-                className="w-full text-left px-4 py-2.5 text-xs text-[#0E7C5A] hover:bg-[#0E7C5A]/5 transition border-t border-black/5"
-              >
-                + Add entry manually
-              </button>
-            </div>
-
-            {/* Daily budget left, subtle line not a big card */}
-            <div className="flex items-center justify-between px-1 text-sm text-[#0F1B2D]/60">
-              <span>
-                {moneyLeft < 0 ? "Over budget" : `≈ ${currency(dailyBudgetLeft)}/day`} for {remainingDays}{" "}
-                {remainingDays === 1 ? "day" : "days"} left
-              </span>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="text-xs font-medium text-[#0F1B2D] hover:underline disabled:opacity-40"
-              >
-                {saving ? "Saving…" : "Save now"}
-              </button>
-            </div>
-
-            {/* Spending insight - calculated locally, no API cost */}
-            <div className="bg-[#0F1B2D] rounded-xl p-5 text-[#F4F2EE]">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] uppercase tracking-wide opacity-50">
-                  Insight
-                </span>
-                <button
-                  onClick={handleGetInsight}
-                  className="text-xs font-medium opacity-80 hover:opacity-100 transition"
-                >
-                  {insight ? "Refresh" : "Analyze my spending"}
+              <div className="px-5 py-3.5 flex items-center justify-between border-t bb-divider" style={{ background: "#fafbfc" }}>
+                <button type="button" onClick={addEntry} className="bb-btn bb-btn-secondary bb-btn-sm">
+                  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+                    <path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                  </svg>
+                  Add expense
                 </button>
+                <div className="flex items-center gap-4">
+                  <p className="m-0 text-sm bb-muted">
+                    Total <span className="bb-num font-semibold ml-1" style={{ color: "var(--ink)" }}>{currency(totalSpent)}</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={saveState === "saving" || (!dirty && saveState !== "error")}
+                    className="bb-btn bb-btn-primary bb-btn-sm"
+                  >
+                    {saveState === "saving" ? "Saving…" : "Save changes"}
+                  </button>
+                </div>
               </div>
-              <p className="text-sm leading-relaxed">
-                {insight || "Tap analyze to get a quick read on this month's spending."}
-              </p>
-            </div>
+            </section>
+
+            {/* Side column */}
+            <aside className="space-y-6">
+              <section className="bb-card p-5" aria-label="Daily allowance">
+                <h2 className="bb-h2 m-0">Daily allowance</h2>
+                {moneyLeft < 0 ? (
+                  <>
+                    <p className="bb-display bb-num m-0 mt-3 text-[1.75rem] font-semibold" style={{ color: "var(--danger)" }}>
+                      {currency(Math.abs(moneyLeft))} over
+                    </p>
+                    <p className="mt-1 mb-0 text-sm bb-muted">You’ve passed this month’s budget.</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="bb-display bb-num m-0 mt-3 text-[1.75rem] font-semibold">
+                      {currency(Math.round(dailyBudgetLeft * 100) / 100)}
+                      <span className="text-base font-medium bb-muted"> / day</span>
+                    </p>
+                    <p className="mt-1 mb-0 text-sm bb-muted">
+                      For the {remainingDays} {remainingDays === 1 ? "day" : "days"} left after your latest dated expense.
+                    </p>
+                  </>
+                )}
+              </section>
+
+              <section className="bb-card p-5" aria-label="AI spending summary" aria-busy={insightLoading}>
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="bb-h2 m-0">Spending summary</h2>
+                  {insight && (
+                    <button
+                      type="button"
+                      onClick={handleGetInsight}
+                      disabled={insightLoading}
+                      className="bb-link text-sm bg-transparent border-0 p-0 cursor-pointer disabled:opacity-50"
+                    >
+                      {insightStale ? "Update" : "Refresh"}
+                    </button>
+                  )}
+                </div>
+
+                {insightLoading ? (
+                  <div className="mt-4 space-y-2.5" role="status" aria-label="Generating summary">
+                    <div className="bb-skeleton h-4 w-full" />
+                    <div className="bb-skeleton h-4 w-[92%]" />
+                    <div className="bb-skeleton h-4 w-[96%]" />
+                    <div className="bb-skeleton h-4 w-2/3" />
+                  </div>
+                ) : insight ? (
+                  <>
+                    <p className="mt-3 mb-0 text-[0.9375rem] leading-relaxed" style={{ color: "var(--ink-2)" }}>
+                      {insight}
+                    </p>
+                    {insightStale && (
+                      <p className="mt-3 mb-0 text-xs bb-muted">You’ve changed your expenses since this summary. Update it to include them.</p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-2 mb-4 text-sm bb-muted">
+                      Get a short written summary of this month: where most of your money went and whether you’re on track.
+                    </p>
+                    <button type="button" onClick={handleGetInsight} className="bb-btn bb-btn-primary bb-btn-sm w-full">
+                      Summarize this month
+                    </button>
+                  </>
+                )}
+
+                {insightError && (
+                  <div className="bb-alert bb-alert-error mt-4" role="alert">{insightError}</div>
+                )}
+              </section>
+            </aside>
           </div>
-        )}
-      </main>
-    </div>
+        </div>
+      )}
+    </AppShell>
   );
 }
 

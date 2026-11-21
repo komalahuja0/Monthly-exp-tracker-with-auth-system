@@ -1,78 +1,88 @@
 import { useState } from "react";
 import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
+import AuthShell from "../components/AuthShell";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 function Register() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    password: "",
-  });
+  const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const update = (field) => (e) => setForm({ ...form, [field]: e.target.value });
 
   const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
     try {
-      e.preventDefault();
       setLoading(true);
-
       await axios.post(`${API}/api/auth/register`, form);
-
       navigate("/login");
-    } catch (error) {
-      alert(error.response?.data?.message || "Something went wrong");
+    } catch (err) {
+      setError(err.response?.data?.message || "Couldn’t create your account. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F4F2EE] px-4">
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-black/5 w-full max-w-sm">
-        <h1 className="text-2xl font-semibold text-center mb-6 text-[#0F1B2D]">
-          Create account
-        </h1>
+    <AuthShell
+      title="Create your account"
+      subtitle="Start tracking your monthly budget in under a minute."
+      footer={
+        <>
+          Already have an account? <Link to="/login" className="bb-link">Sign in</Link>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <label className="bb-field">
+          <span>Full name</span>
+          <input
+            type="text"
+            autoComplete="name"
+            required
+            placeholder="Your name"
+            value={form.name}
+            onChange={update("name")}
+            className="bb-input"
+          />
+        </label>
+        <label className="bb-field">
+          <span>Email</span>
+          <input
+            type="email"
+            autoComplete="email"
+            required
+            placeholder="you@example.com"
+            value={form.email}
+            onChange={update("email")}
+            className="bb-input"
+          />
+        </label>
+        <label className="bb-field">
+          <span>Password</span>
+          <input
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={6}
+            placeholder="At least 6 characters"
+            value={form.password}
+            onChange={update("password")}
+            className="bb-input"
+          />
+        </label>
 
-        <input
-          placeholder="Name"
-          className="w-full p-3 border border-black/10 rounded-lg mb-3 outline-none focus:border-[#0E7C5A] transition text-sm"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-        />
+        {error && <div className="bb-alert bb-alert-error" role="alert">{error}</div>}
 
-        <input
-          placeholder="Email"
-          className="w-full p-3 border border-black/10 rounded-lg mb-3 outline-none focus:border-[#0E7C5A] transition text-sm"
-          value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
-        />
-
-        <input
-          type="password"
-          placeholder="Password"
-          className="w-full p-3 border border-black/10 rounded-lg mb-4 outline-none focus:border-[#0E7C5A] transition text-sm"
-          value={form.password}
-          onChange={(e) => setForm({ ...form, password: e.target.value })}
-        />
-
-        <button
-          disabled={loading}
-          className="w-full bg-[#0F1B2D] text-white p-3 rounded-lg text-sm font-medium hover:bg-[#0F1B2D]/90 transition disabled:opacity-50"
-          onClick={handleSubmit}
-        >
-          {loading ? "Creating account..." : "Register"}
+        <button type="submit" disabled={loading} className="bb-btn bb-btn-primary w-full">
+          {loading ? "Creating account…" : "Create account"}
         </button>
-
-        <p className="text-center text-sm text-[#0F1B2D]/60 mt-4">
-          Already have an account?{" "}
-          <Link to="/login" className="text-[#0E7C5A] font-medium hover:underline">
-            Login
-          </Link>
-        </p>
-      </div>
-    </div>
+      </form>
+    </AuthShell>
   );
 }
 
