@@ -4,15 +4,22 @@ import { useNavigate } from "react-router-dom";
 import AppShell from "../components/AppShell";
 import { MONTHS, currency } from "../utils/format";
 
-const daysInMonth = (month, year) => {
-  if (!month) return 30;
-  if ([1, 3, 5, 7, 8, 10, 12].includes(month)) return 31;
-  if (month === 2) {
-    const y = year || new Date().getFullYear();
-    const isLeap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
-    return isLeap ? 29 : 28;
-  }
-  return 30;
+// Day 0 of the next month is the last day of this one, so leap years
+// (29 days in Feb) are handled by the Date object itself.
+const daysInMonth = (month, year) => new Date(year, month, 0).getDate();
+
+const spentOf = (rec) => (rec.entries || []).reduce((sum, e) => sum + (e.amount || 0), 0);
+const prevMonthOf = (m, y) => (m === 1 ? [12, y - 1] : [m - 1, y]);
+
+// Unspent money at the end of month (m, y), following any chain of carry-overs.
+// Only a positive leftover is carried; an overspent month carries nothing.
+const leftoverOf = (records, m, y, depth = 0) => {
+  if (depth > 120) return 0;
+  const rec = records.find((r) => Number(r.month) === m && Number(r.year) === y);
+  if (!rec) return 0;
+  const [pm, py] = prevMonthOf(m, y);
+  const carried = rec.carryOver ? leftoverOf(records, pm, py, depth + 1) : 0;
+  return Math.max(0, (rec.budget || 0) + carried - spentOf(rec));
 };
 
 let nextId = 0;
@@ -37,6 +44,8 @@ function ExpenseTracker() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year] = useState(now.getFullYear());
   const [budget, setBudget] = useState("");
+  const [carryOver, setCarryOver] = useState(false);
+  const [allRecords, setAllRecords] = useState([]);
   const [entries, setEntries] = useState([emptyEntry()]);
   const [loading, setLoading] = useState(true);
   const [saveState, setSaveState] = useState("idle");
@@ -52,21 +61,26 @@ function ExpenseTracker() {
 
   const budgetNum = parseFloat(budget) || 0;
   const totalSpent = entries.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
-  const moneyLeft = budgetNum - totalSpent;
-  const percentUsed = budgetNum > 0 ? (totalSpent / budgetNum) * 100 : 0;
+  const [prevMonth, prevYear] = prevMonthOf(month, year);
+  const prevEnded =
+    prevYear < now.getFullYear() || (prevYear === now.getFullYear() && prevMonth < now.getMonth() + 1);
+  const carriedAvailable = leftoverOf(allRecords, prevMonth, prevYear);
+  const carriedApplied = carryOver ? carriedAvailable : 0;
+  const totalBudget = budgetNum + carriedApplied;
+  const moneyLeft = totalBudget - totalSpent;
+  const percentUsed = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
   const progressClass = percentUsed > 100 ? "over" : percentUsed >= 85 ? "warn" : "";
 
-  // "Days left" is driven by the latest date entered against any entry,
-  // not today's calendar date. With no dates yet, the full month remains.
-  const entryDays = entries
-    .map((e) => (e.date ? parseInt(e.date.split("-")[2], 10) : null))
-    .filter((d) => d !== null && !isNaN(d));
-  const latestDay = entryDays.length > 0 ? Math.max(...entryDays) : 0;
-  const remainingDays = Math.max(days - latestDay, 1);
-  const dailyBudgetLeft = moneyLeft / remainingDays;
+  // Days left come from today's date: the current month counts today through
+  // the last day, a future month counts every day, a past month has none left.
+  const currentMonth = now.getMonth() + 1;
+  const monthEnded = year < now.getFullYear() || (year === now.getFullYear() && month < currentMonth);
+  const isCurrentMonth = year === now.getFullYear() && month === currentMonth;
+  const remainingDays = monthEnded ? 0 : isCurrentMonth ? days - now.getDate() + 1 : days;
+  const dailyBudgetLeft = remainingDays > 0 ? moneyLeft / remainingDays : 0;
 
   // Used to tell whether the AI summary still matches what's on screen.
-  const dataKey = JSON.stringify([budgetNum, entries.filter(isValid).map((e) => [e.name.trim(), e.amount, e.date])]);
+  const dataKey = JSON.stringify([budgetNum, carriedApplied, entries.filter(isValid).map((e) => [e.name.trim(), e.amount, e.date])]);
   const insightStale = insight !== "" && insightSnapshot !== dataKey;
 
   const statusLabel =
@@ -91,10 +105,14 @@ function ExpenseTracker() {
   const fetchMonth = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`${API}/expenses/${month}/${year}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const headers = { Authorization: `Bearer ${token}` };
+      const [res, allRes] = await Promise.all([
+        axios.get(`${API}/expenses/${month}/${year}`, { headers }),
+        axios.get(`${API}/expenses`, { headers }),
+      ]);
+      setAllRecords(allRes.data.expenses || []);
       const data = res.data.expense;
+      setCarryOver(!!data?.carryOver);
       if (data) {
         setBudget(String(data.budget ?? ""));
         setEntries(
@@ -134,7 +152,15 @@ function ExpenseTracker() {
 
         await axios.post(
           `${API}/expenses`,
-          { month, year, budget: parseFloat(budgetToSave) || 0, daysInMonth: days, entries: cleanEntries },
+          {
+            month,
+            year,
+            budget: parseFloat(budgetToSave) || 0,
+            daysInMonth: days,
+            entries: cleanEntries,
+            carryOver,
+            carriedAmount: carriedApplied,
+          },
           { headers: { Authorization: `Bearer ${token}` } }
         );
         setSaveState("saved");
@@ -146,7 +172,7 @@ function ExpenseTracker() {
         return false;
       }
     },
-    [month, year, days, token]
+    [month, year, days, token, carryOver, carriedApplied]
   );
 
   const handleEntryChange = (id, field, value) => {
@@ -174,6 +200,11 @@ function ExpenseTracker() {
 
   const handleSave = () => persist(entries, budget);
 
+  const toggleCarryOver = () => {
+    setCarryOver((v) => !v);
+    setDirty(true);
+  };
+
   const handleMonthChange = (e) => {
     if (dirty && !window.confirm("You have unsaved changes. Switch month and discard them?")) return;
     setMonth(parseInt(e.target.value));
@@ -185,7 +216,7 @@ function ExpenseTracker() {
       setInsightError("Add at least one expense to get a summary.");
       return;
     }
-    if (!budgetNum) {
+    if (!totalBudget) {
       setInsightError("Set a monthly budget to get a summary.");
       return;
     }
@@ -278,6 +309,9 @@ function ExpenseTracker() {
                     style={{ color: "var(--ink)", MozAppearance: "textfield" }}
                   />
                 </div>
+                {carriedApplied > 0 && (
+                  <p className="m-0 mt-1 text-sm bb-muted bb-num">+ {currency(carriedApplied)} carried over</p>
+                )}
               </div>
               <div className="sm:px-8">
                 <p className="bb-label m-0">Spent</p>
@@ -294,7 +328,26 @@ function ExpenseTracker() {
               </div>
             </div>
 
-            <div className="mt-6">
+            <div className="mt-6 pt-5 border-t bb-divider flex items-start justify-between gap-4">
+              <div>
+                <p className="m-0 text-sm font-semibold" id="carry-label">Carry over unspent budget</p>
+                <p className="m-0 mt-0.5 text-sm bb-muted">
+                  {carriedAvailable > 0
+                    ? `${MONTHS[prevMonth - 1]} ${prevEnded ? "had" : "has so far"} ${currency(carriedAvailable)} unspent. Add it to this month’s budget.`
+                    : `${MONTHS[prevMonth - 1]} has nothing unspent to carry over.`}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={carryOver}
+                aria-labelledby="carry-label"
+                onClick={toggleCarryOver}
+                className="bb-switch"
+              />
+            </div>
+
+            <div className="mt-5">
               <div
                 className={`bb-progress ${progressClass}`}
                 role="progressbar"
@@ -306,7 +359,7 @@ function ExpenseTracker() {
                 <div style={{ width: `${Math.min(percentUsed, 100)}%` }} />
               </div>
               <p className="mt-2 mb-0 text-sm bb-muted bb-num">
-                {budgetNum > 0 ? `${Math.round(percentUsed)}% of your budget used` : "Set a budget to see your progress"}
+                {totalBudget > 0 ? `${Math.round(percentUsed)}% of your budget used` : "Set a budget to see your progress"}
               </p>
             </div>
           </section>
@@ -409,6 +462,11 @@ function ExpenseTracker() {
                     </p>
                     <p className="mt-1 mb-0 text-sm bb-muted">You’ve passed this month’s budget.</p>
                   </>
+                ) : monthEnded ? (
+                  <>
+                    <p className="bb-display bb-num m-0 mt-3 text-[1.75rem] font-semibold">{currency(moneyLeft)}</p>
+                    <p className="mt-1 mb-0 text-sm bb-muted">This month has ended. That’s what you had left.</p>
+                  </>
                 ) : (
                   <>
                     <p className="bb-display bb-num m-0 mt-3 text-[1.75rem] font-semibold">
@@ -416,7 +474,9 @@ function ExpenseTracker() {
                       <span className="text-base font-medium bb-muted"> / day</span>
                     </p>
                     <p className="mt-1 mb-0 text-sm bb-muted">
-                      For the {remainingDays} {remainingDays === 1 ? "day" : "days"} left after your latest dated expense.
+                      {isCurrentMonth
+                        ? `For the ${remainingDays} ${remainingDays === 1 ? "day" : "days"} left this month, including today.`
+                        : `Spread across all ${remainingDays} days of the month.`}
                     </p>
                   </>
                 )}

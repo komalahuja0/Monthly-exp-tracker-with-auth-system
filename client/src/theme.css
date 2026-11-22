@@ -133,6 +133,20 @@ body {
 }
 .bb-iconbtn:hover { background: var(--danger-soft); color: var(--danger); }
 
+/* Switch */
+.bb-switch {
+  position: relative; flex-shrink: 0; width: 40px; height: 24px; padding: 0;
+  border: 0; border-radius: 999px; background: #cfd5de; cursor: pointer;
+  transition: background 0.15s;
+}
+.bb-switch::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s;
+}
+.bb-switch[aria-checked="true"] { background: var(--accent); }
+.bb-switch[aria-checked="true"]::after { transform: translateX(16px); }
+
 /* Progress */
 .bb-progress { height: 8px; border-radius: 999px; background: #eceff3; overflow: hidden; }
 .bb-progress > div { height: 100%; border-radius: 999px; background: var(--accent); transition: width 0.4s ease; }
@@ -155,4 +169,5 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .bb-skeleton { animation: none; }
   .bb-progress > div { transition: none; }
+  .bb-switch, .bb-switch::after { transition: none; }
 }
