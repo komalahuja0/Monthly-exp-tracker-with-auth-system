@@ -6,6 +6,7 @@ const authRoutes = require("./routes/authRoutes");
 const expenseRoutes = require("./routes/expenseRoutes");
 const aiRoutes = require("./routes/aiRoutes");
 
+app.use("/api/ai", aiRoutes);      
 const app = express();
 connectDB();
 
