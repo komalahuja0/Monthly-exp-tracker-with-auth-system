@@ -11,14 +11,12 @@ const daysInMonth = (month, year) => new Date(year, month, 0).getDate();
 const spentOf = (rec) => (rec.entries || []).reduce((sum, e) => sum + (e.amount || 0), 0);
 const prevMonthOf = (m, y) => (m === 1 ? [12, y - 1] : [m - 1, y]);
 
-// Unspent money at the end of month (m, y), following any chain of carry-overs.
-// Only a positive leftover is carried; an overspent month carries nothing.
-const leftoverOf = (records, m, y, depth = 0) => {
-  if (depth > 120) return 0;
+// Unspent money at the end of month (m, y), using the carried amount that month
+// saved. Only a positive leftover is carried; an overspent month carries nothing.
+const leftoverOf = (records, m, y) => {
   const rec = records.find((r) => Number(r.month) === m && Number(r.year) === y);
   if (!rec) return 0;
-  const [pm, py] = prevMonthOf(m, y);
-  const carried = rec.carryOver ? leftoverOf(records, pm, py, depth + 1) : 0;
+  const carried = rec.carryOver ? Number(rec.carriedAmount) || 0 : 0;
   return Math.max(0, (rec.budget || 0) + carried - spentOf(rec));
 };
 
@@ -45,6 +43,7 @@ function ExpenseTracker() {
   const [year] = useState(now.getFullYear());
   const [budget, setBudget] = useState("");
   const [carryOver, setCarryOver] = useState(false);
+  const [carriedAmount, setCarriedAmount] = useState(0);
   const [allRecords, setAllRecords] = useState([]);
   const [entries, setEntries] = useState([emptyEntry()]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +64,7 @@ function ExpenseTracker() {
   const prevEnded =
     prevYear < now.getFullYear() || (prevYear === now.getFullYear() && prevMonth < now.getMonth() + 1);
   const carriedAvailable = leftoverOf(allRecords, prevMonth, prevYear);
-  const carriedApplied = carryOver ? carriedAvailable : 0;
+  const carriedApplied = carryOver ? carriedAmount : 0;
   const totalBudget = budgetNum + carriedApplied;
   const moneyLeft = totalBudget - totalSpent;
   const percentUsed = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
@@ -113,6 +112,7 @@ function ExpenseTracker() {
       setAllRecords(allRes.data.expenses || []);
       const data = res.data.expense;
       setCarryOver(!!data?.carryOver);
+      setCarriedAmount(Number(data?.carriedAmount) || 0);
       if (data) {
         setBudget(String(data.budget ?? ""));
         setEntries(
@@ -159,7 +159,7 @@ function ExpenseTracker() {
             daysInMonth: days,
             entries: cleanEntries,
             carryOver,
-            carriedAmount: carriedApplied,
+            carriedAmount,
           },
           { headers: { Authorization: `Bearer ${token}` } }
         );
@@ -172,7 +172,7 @@ function ExpenseTracker() {
         return false;
       }
     },
-    [month, year, days, token, carryOver, carriedApplied]
+    [month, year, days, token, carryOver, carriedAmount]
   );
 
   const handleEntryChange = (id, field, value) => {
@@ -201,7 +201,13 @@ function ExpenseTracker() {
   const handleSave = () => persist(entries, budget);
 
   const toggleCarryOver = () => {
+    if (!carryOver) setCarriedAmount(carriedAvailable);
     setCarryOver((v) => !v);
+    setDirty(true);
+  };
+
+  const refreshCarry = () => {
+    setCarriedAmount(carriedAvailable);
     setDirty(true);
   };
 
@@ -336,6 +342,14 @@ function ExpenseTracker() {
                     ? `${MONTHS[prevMonth - 1]} ${prevEnded ? "had" : "has so far"} ${currency(carriedAvailable)} unspent. Add it to this month’s budget.`
                     : `${MONTHS[prevMonth - 1]} has nothing unspent to carry over.`}
                 </p>
+                {carryOver && carriedAvailable !== carriedAmount && (
+                  <p className="m-0 mt-1 text-sm" style={{ color: "var(--warn)" }}>
+                    {MONTHS[prevMonth - 1]}’s unspent is now {currency(carriedAvailable)}, but {currency(carriedAmount)} is carried.{" "}
+                    <button type="button" onClick={refreshCarry} className="bb-link bg-transparent border-0 p-0 cursor-pointer">
+                      Update
+                    </button>
+                  </p>
+                )}
               </div>
               <button
                 type="button"
