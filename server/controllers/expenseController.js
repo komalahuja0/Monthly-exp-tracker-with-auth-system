@@ -54,7 +54,7 @@ const getExpenseByMonth = async (req, res) => {
   }
 };
 
-// Get history (all months) for the logged-in user
+
 const getAllExpenses = async (req, res) => {
   try {
     const expenses = await Expense.find({ userId: req.user.userId }).sort({
