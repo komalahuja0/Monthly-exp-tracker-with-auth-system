@@ -15,7 +15,17 @@ const daysInMonth = (month, year) => {
   return 30;
 };
 
-const emptyEntry = () => ({ name: "", amount: "", date: "" });
+let nextId = 0;
+const newId = () => `entry-${++nextId}`;
+const emptyEntry = () => ({ id: newId(), name: "", amount: "", date: "" });
+
+// Oldest date first; entries without a date stay at the bottom (so a new blank row never jumps).
+const byDate = (a, b) => {
+  if (a.date && b.date) return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+  if (a.date) return -1;
+  if (b.date) return 1;
+  return 0;
+};
 const isValid = (e) => e.name.trim() !== "" && e.amount !== "";
 const API = `${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api`;
 
@@ -89,7 +99,9 @@ function ExpenseTracker() {
         setBudget(String(data.budget ?? ""));
         setEntries(
           data.entries && data.entries.length > 0
-            ? data.entries.map((e) => ({ name: e.name, amount: String(e.amount), date: e.date || "" }))
+            ? data.entries
+                .map((e) => ({ id: newId(), name: e.name, amount: String(e.amount), date: e.date || "" }))
+                .sort(byDate)
             : [emptyEntry()]
         );
       } else {
@@ -137,15 +149,24 @@ function ExpenseTracker() {
     [month, year, days, token]
   );
 
-  const handleEntryChange = (index, field, value) => {
-    setEntries((prev) => prev.map((e, i) => (i === index ? { ...e, [field]: value } : e)));
+  const handleEntryChange = (id, field, value) => {
+    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
     setDirty(true);
+  };
+
+  // Runs when focus leaves a row, so rows never move while you're still typing in them.
+  const sortEntries = () => {
+    const next = [...entries].sort(byDate);
+    if (next.some((e, i) => e.id !== entries[i].id)) {
+      setEntries(next);
+      setDirty(true);
+    }
   };
 
   const addEntry = () => setEntries([...entries, emptyEntry()]);
 
-  const removeEntry = (index) => {
-    const next = entries.filter((_, i) => i !== index);
+  const removeEntry = (id) => {
+    const next = entries.filter((e) => e.id !== id);
     const finalEntries = next.length > 0 ? next : [emptyEntry()];
     setEntries(finalEntries);
     setDirty(true);
@@ -309,12 +330,16 @@ function ExpenseTracker() {
 
               <ul className="list-none m-0 p-0 px-3 pb-2">
                 {entries.map((entry, i) => (
-                  <li key={i} className="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-1 px-2 py-2 sm:py-1 border-b bb-divider last:border-b-0">
+                  <li
+                    key={entry.id}
+                    onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) sortEntries(); }}
+                    className="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-1 px-2 py-2 sm:py-1 border-b bb-divider last:border-b-0"
+                  >
                     <input
                       type="text"
                       aria-label={`Description for entry ${i + 1}`}
                       value={entry.name}
-                      onChange={(e) => handleEntryChange(i, "name", e.target.value)}
+                      onChange={(e) => handleEntryChange(entry.id, "name", e.target.value)}
                       placeholder="What did you spend on?"
                       className="bb-cell order-first w-full sm:order-none sm:w-auto sm:flex-1"
                     />
@@ -322,7 +347,7 @@ function ExpenseTracker() {
                       type="date"
                       aria-label={`Date for entry ${i + 1}`}
                       value={entry.date}
-                      onChange={(e) => handleEntryChange(i, "date", e.target.value)}
+                      onChange={(e) => handleEntryChange(entry.id, "date", e.target.value)}
                       className="bb-cell w-[9.5rem] shrink-0 sm:order-first"
                     />
                     <input
@@ -332,13 +357,13 @@ function ExpenseTracker() {
                       inputMode="decimal"
                       aria-label={`Amount for entry ${i + 1}`}
                       value={entry.amount}
-                      onChange={(e) => handleEntryChange(i, "amount", e.target.value)}
+                      onChange={(e) => handleEntryChange(entry.id, "amount", e.target.value)}
                       placeholder="0.00"
                       className="bb-cell flex-1 sm:flex-none sm:shrink-0 sm:w-32"
                     />
                     <button
                       type="button"
-                      onClick={() => removeEntry(i)}
+                      onClick={() => removeEntry(entry.id)}
                       aria-label={`Delete entry ${i + 1}`}
                       className="bb-iconbtn"
                     >
