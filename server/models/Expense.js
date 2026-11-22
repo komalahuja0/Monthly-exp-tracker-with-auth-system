@@ -41,6 +41,8 @@ const expenseSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    carryOver: { type: Boolean, default: false },
+carriedAmount: { type: Number, default: 0 },
     entries: [entrySchema],
   },
   {

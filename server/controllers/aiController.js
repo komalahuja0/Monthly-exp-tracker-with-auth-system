@@ -108,8 +108,10 @@ Mention if they're on track, overspending, or where most money is going.
 Do not use markdown, headers, or bullet points - plain conversational sentences only.
 Do not give generic advice like "track your spending" - they're already doing that here.`;
 
-    const userMessage = `Monthly budget: Rs.${expense.budget}. Total spent so far: Rs.${totalSpent}. Expenses: ${summary}.`;
-
+const carried = expense.carryOver ? expense.carriedAmount || 0 : 0;
+const userMessage = `Monthly budget: Rs.${expense.budget + carried}${
+  carried ? ` (Rs.${expense.budget} set, plus Rs.${carried} carried over from last month)` : ""
+}. Total spent so far: Rs.${totalSpent}. Expenses: ${summary}.`;
     const insight = await callClaude(systemPrompt, userMessage);
 
     res.status(200).json({
