@@ -172,15 +172,28 @@ function ExpenseTracker() {
       setInsightLoading(true);
       // Make sure the server has the latest numbers before it analyses them.
       const saved = await persist(entries, budget);
-      if (!saved) throw new Error("save failed");
+      if (!saved) {
+        setInsightError("Couldn’t save your latest changes, so the summary wasn’t generated.");
+        return;
+      }
       const res = await axios.get(`${API}/ai/insights/${month}/${year}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setInsight(res.data.insight || "");
       setInsightSnapshot(dataKey);
     } catch (error) {
-      console.log(error);
-      setInsightError("Couldn’t generate a summary right now. Try again in a moment.");
+      console.log("AI summary error:", error.response?.status, error.response?.data || error.message);
+      const status = error.response?.status;
+      const serverMsg = error.response?.data?.message;
+      if (!error.response) {
+        setInsightError("Couldn’t reach the server. Check your connection and the API URL.");
+      } else if (status === 404) {
+        setInsightError("The summary service wasn’t found on the server (route /api/ai is not mounted).");
+      } else if (status === 401) {
+        setInsightError("Your session has expired. Log out and sign in again.");
+      } else {
+        setInsightError(`Couldn’t generate a summary: ${String(serverMsg || "server error").slice(0, 160)}`);
+      }
     } finally {
       setInsightLoading(false);
     }
@@ -303,14 +316,14 @@ function ExpenseTracker() {
                       value={entry.name}
                       onChange={(e) => handleEntryChange(i, "name", e.target.value)}
                       placeholder="What did you spend on?"
-                      className="bb-cell order-first w-full sm:order-none sm:flex-1"
+                      className="bb-cell order-first w-full sm:order-none sm:w-auto sm:flex-1"
                     />
                     <input
                       type="date"
                       aria-label={`Date for entry ${i + 1}`}
                       value={entry.date}
                       onChange={(e) => handleEntryChange(i, "date", e.target.value)}
-                      className="bb-cell w-[9.5rem] sm:order-first"
+                      className="bb-cell w-[9.5rem] shrink-0 sm:order-first"
                     />
                     <input
                       type="number"
@@ -321,7 +334,7 @@ function ExpenseTracker() {
                       value={entry.amount}
                       onChange={(e) => handleEntryChange(i, "amount", e.target.value)}
                       placeholder="0.00"
-                      className="bb-cell flex-1 sm:flex-none sm:w-32"
+                      className="bb-cell flex-1 sm:flex-none sm:shrink-0 sm:w-32"
                     />
                     <button
                       type="button"

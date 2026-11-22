@@ -112,7 +112,7 @@ body {
 
 /* Ledger inputs (borderless until interacted with) */
 .bb-cell {
-  width: 100%; box-sizing: border-box; height: 40px; padding: 0 0.625rem;
+  min-width: 0; box-sizing: border-box; height: 40px; padding: 0 0.625rem;
   font: inherit; font-size: 0.9375rem; color: var(--ink);
   background: transparent; border: 1px solid transparent; border-radius: 8px;
   transition: background 0.15s, border-color 0.15s;
@@ -127,7 +127,7 @@ body {
 
 .bb-iconbtn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; border-radius: 8px; border: 0;
+  flex-shrink: 0; width: 36px; height: 36px; border-radius: 8px; border: 0;
   background: transparent; color: #98a2b3; cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
