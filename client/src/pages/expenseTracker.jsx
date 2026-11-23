@@ -86,6 +86,7 @@ function ExpenseTracker() {
     saveState === "saving" ? "Saving…"
     : saveState === "error" ? "Couldn’t save changes"
     : dirty ? "Unsaved changes"
+    : saveState === "partial" ? "Saved, but the server isn’t storing carry-over yet"
     : saveState === "saved" ? "All changes saved"
     : "";
 
@@ -150,7 +151,7 @@ function ExpenseTracker() {
           .filter(isValid)
           .map((e) => ({ name: e.name.trim(), amount: parseFloat(e.amount), date: e.date || "" }));
 
-        await axios.post(
+        const res = await axios.post(
           `${API}/expenses`,
           {
             month,
@@ -163,7 +164,9 @@ function ExpenseTracker() {
           },
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setSaveState("saved");
+        // If the server answers without the carry-over fields, it is running old code.
+        const stored = res.data?.expense;
+        setSaveState(carryOver && stored && !stored.carryOver ? "partial" : "saved");
         setDirty(false);
         return true;
       } catch (error) {
@@ -268,7 +271,7 @@ function ExpenseTracker() {
         <div className="flex items-center gap-4">
           <span
             className="text-sm bb-muted min-w-[9.5rem] text-right"
-            style={saveState === "error" ? { color: "var(--danger)" } : dirty ? { color: "var(--warn)" } : undefined}
+            style={saveState === "error" ? { color: "var(--danger)" } : dirty || saveState === "partial" ? { color: "var(--warn)" } : undefined}
             role="status"
             aria-live="polite"
           >
@@ -456,10 +459,10 @@ function ExpenseTracker() {
                   <button
                     type="button"
                     onClick={handleSave}
-                    disabled={saveState === "saving" || (!dirty && saveState !== "error")}
-                    className="bb-btn bb-btn-primary bb-btn-sm"
+                    disabled={saveState === "saving" || !(dirty || saveState === "error")}
+                    className={`bb-btn bb-btn-sm ${dirty || saveState === "error" ? "bb-btn-primary" : "bb-btn-secondary"}`}
                   >
-                    {saveState === "saving" ? "Saving…" : "Save changes"}
+                    {saveState === "saving" ? "Saving…" : dirty || saveState === "error" ? "Save changes" : "Saved"}
                   </button>
                 </div>
               </div>
