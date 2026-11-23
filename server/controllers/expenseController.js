@@ -3,8 +3,8 @@ const Expense = require("../models/Expense");
 // Create or update the expense doc for a given month/year (upsert)
 const saveExpense = async (req, res) => {
   try {
-    
-const { month, year, budget, daysInMonth, entries, carryOver, carriedAmount } = req.body;
+    const { month, year, budget, daysInMonth, entries, carryOver, carriedAmount } = req.body;
+
     if (!month || !year) {
       return res.status(400).json({
         success: false,
@@ -14,7 +14,16 @@ const { month, year, budget, daysInMonth, entries, carryOver, carriedAmount } = 
 
     const expense = await Expense.findOneAndUpdate(
       { userId: req.user.userId, month, year },
-     { budget, daysInMonth, entries, carryOver: !!carryOver, carriedAmount: Number(carriedAmount) || 0, userId: req.user.userId, month, year },
+      {
+        budget,
+        daysInMonth,
+        entries,
+        carryOver: !!carryOver,
+        carriedAmount: Number(carriedAmount) || 0,
+        userId: req.user.userId,
+        month,
+        year,
+      },
       { new: true, upsert: true, runValidators: true }
     );
 
@@ -54,7 +63,7 @@ const getExpenseByMonth = async (req, res) => {
   }
 };
 
-
+// Get history (all months) for the logged-in user
 const getAllExpenses = async (req, res) => {
   try {
     const expenses = await Expense.find({ userId: req.user.userId }).sort({
