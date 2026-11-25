@@ -197,3 +197,12 @@ a.bb-navlink.active, a.bb-navlink.active:hover { color: var(--accent); }
   color: var(--accent); cursor: pointer;
 }
 .bb-linkbtn:hover { color: var(--accent-hover); text-decoration: underline; text-underline-offset: 3px; }
+
+/* Dashboard additions */
+.bb-switch-dark { background: rgba(255, 255, 255, 0.25); }
+.bb-switch-dark[aria-checked="true"] { background: #34d399; }
+.bb-chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 10px;
+}
+.bb-card { box-shadow: 0 1px 2px rgba(13, 27, 42, 0.04); }

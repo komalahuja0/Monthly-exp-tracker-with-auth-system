@@ -75,6 +75,35 @@ function ExpenseTracker() {
   const dailyBudgetLeft = remainingDays > 0 ? moneyLeft / remainingDays : 0;
 
 
+  // ----- dashboard visuals -----
+  const validEntries = entries.filter(isValid);
+  const ringPct = Math.min(percentUsed, 100);
+  const RING_C = 2 * Math.PI * 52;
+  const ringColor = moneyLeft < 0 ? "#f87171" : percentUsed >= 85 ? "#fbbf24" : "#34d399";
+  const monthProgress = isCurrentMonth ? (now.getDate() / days) * 100 : monthEnded ? 100 : 0;
+  const pace =
+    totalBudget <= 0
+      ? null
+      : moneyLeft < 0
+      ? { label: "Over budget", bg: "rgba(248,113,113,0.2)", fg: "#fca5a5" }
+      : isCurrentMonth && percentUsed <= monthProgress + 5
+      ? { label: "On track", bg: "rgba(52,211,153,0.18)", fg: "#6ee7b7" }
+      : isCurrentMonth
+      ? { label: "Spending fast", bg: "rgba(251,191,36,0.18)", fg: "#fcd34d" }
+      : null;
+
+  const spendByDay = Array.from({ length: days }, () => 0);
+  validEntries.forEach((e) => {
+    if (!e.date) return;
+    const [ey, em, ed] = e.date.split("-").map(Number);
+    if (ey === year && em === month && ed >= 1 && ed <= days) spendByDay[ed - 1] += parseFloat(e.amount) || 0;
+  });
+  const maxDay = Math.max(...spendByDay);
+  const peakDay = maxDay > 0 ? spendByDay.indexOf(maxDay) + 1 : 0;
+  const undatedCount = validEntries.filter((e) => !e.date).length;
+  const topExpenses = [...validEntries].sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount)).slice(0, 5);
+  const biggest = topExpenses[0];
+
   const statusLabel =
     saveState === "saving" ? "Saving…"
     : saveState === "error" ? "Couldn’t save changes"
@@ -210,7 +239,7 @@ function ExpenseTracker() {
   };
 
   return (
-    <AppShell>
+    <AppShell maxWidth="max-w-6xl">
       {/* Page header */}
       <div className="flex flex-wrap items-end justify-between gap-4 mb-7">
         <div>
@@ -243,114 +272,96 @@ function ExpenseTracker() {
 
       {loading ? (
         <div className="space-y-5" aria-busy="true">
-          <div className="bb-skeleton h-44 w-full" style={{ borderRadius: 14 }} />
+          <div className="bb-skeleton h-56 w-full" style={{ borderRadius: 18 }} />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="bb-skeleton h-28" style={{ borderRadius: 14 }} />
+            ))}
+          </div>
           <div className="bb-skeleton h-72 w-full" style={{ borderRadius: 14 }} />
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Overview */}
-          <section className="bb-card overflow-hidden" aria-label="Monthly overview">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-7 p-6 sm:p-7">
-              {/* Budget */}
-              <div className="lg:pr-6 min-w-0">
-                <label htmlFor="budget" className="bb-label">Monthly budget</label>
-                <div className="flex items-baseline gap-1 mt-1.5">
-                  <span className="bb-display text-[1.75rem] font-semibold bb-muted">₹</span>
-                  <input
-                    id="budget"
-                    type="number"
-                    min="0"
-                    inputMode="decimal"
-                    value={budget}
-                    onChange={(e) => { setBudget(e.target.value); setDirty(true); }}
-                    placeholder="0"
-                    className="bb-display bb-num w-full min-w-0 text-[1.75rem] font-semibold bg-transparent border-0 outline-none p-0"
-                    style={{ color: "var(--ink)", MozAppearance: "textfield" }}
-                  />
+          {/* Hero */}
+          <section
+            className="overflow-hidden text-white"
+            style={{ borderRadius: 18, background: "linear-gradient(135deg, #0d1b2a 0%, #14365a 100%)" }}
+            aria-label="Monthly overview"
+          >
+            <div className="p-6 sm:p-9 flex flex-col-reverse gap-8 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="m-0 text-sm font-medium" style={{ color: "rgba(255,255,255,0.7)" }}>
+                    {moneyLeft < 0 ? "Over budget by" : `Remaining in ${MONTHS[month - 1]}`}
+                  </p>
+                  {pace && (
+                    <span
+                      className="text-xs font-semibold px-2.5 py-1 rounded-full"
+                      style={{ background: pace.bg, color: pace.fg }}
+                    >
+                      {pace.label}
+                    </span>
+                  )}
                 </div>
-                <p className="m-0 mt-1 text-sm bb-muted bb-num">
-                  {carriedApplied > 0 ? `+ ${currency(carriedApplied)} carried over` : "Set this month’s limit"}
-                </p>
-              </div>
-
-              {/* Spent */}
-              <div className="lg:px-6 lg:border-l bb-divider min-w-0">
-                <p className="bb-label m-0">Spent</p>
-                <p className="bb-display bb-num m-0 mt-1.5 text-[1.75rem] font-semibold">{currency(totalSpent)}</p>
-                <p className="m-0 mt-1 text-sm bb-muted bb-num">
-                  {entries.filter(isValid).length} {entries.filter(isValid).length === 1 ? "transaction" : "transactions"}
-                </p>
-              </div>
-
-              {/* Remaining */}
-              <div className="lg:px-6 lg:border-l bb-divider min-w-0">
-                <p className="bb-label m-0">{moneyLeft < 0 ? "Over budget by" : "Remaining"}</p>
-                <p
-                  className="bb-display bb-num m-0 mt-1.5 text-[1.75rem] font-semibold"
-                  style={{ color: moneyLeft < 0 ? "var(--danger)" : "var(--accent)" }}
-                >
+                <p className="bb-display bb-num m-0 mt-3 text-[3rem] sm:text-[3.75rem] leading-none font-semibold" style={{ color: "#fff" }}>
                   {currency(Math.abs(moneyLeft))}
                 </p>
-                <p className="m-0 mt-1 text-sm bb-muted bb-num">
-                  {totalBudget > 0 ? `${Math.round(percentUsed)}% of budget used` : "No budget set yet"}
+                <p className="m-0 mt-4 text-[0.9375rem]" style={{ color: "rgba(255,255,255,0.65)" }}>
+                  {totalBudget > 0
+                    ? `of ${currency(totalBudget)}${carriedApplied > 0 ? `, including ${currency(carriedApplied)} carried over` : ""}`
+                    : "Set a monthly budget below to get started"}
                 </p>
               </div>
 
-              {/* Daily allowance */}
-              <div className="lg:pl-6 lg:border-l bb-divider min-w-0">
-                <p className="bb-label m-0">Daily allowance</p>
-                {moneyLeft < 0 || monthEnded || totalBudget <= 0 ? (
-                  <>
-                    <p className="bb-display bb-num m-0 mt-1.5 text-[1.75rem] font-semibold bb-muted">—</p>
-                    <p className="m-0 mt-1 text-sm bb-muted">
-                      {moneyLeft < 0 ? "Budget exceeded" : monthEnded ? "This month has ended" : "Set a budget first"}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="bb-display bb-num m-0 mt-1.5 text-[1.75rem] font-semibold">
-                      {currency(Math.round(dailyBudgetLeft * 100) / 100)}
-                      <span className="text-base font-medium bb-muted"> / day</span>
-                    </p>
-                    <p className="m-0 mt-1 text-sm bb-muted">
-                      {isCurrentMonth
-                        ? `${remainingDays} ${remainingDays === 1 ? "day" : "days"} left, incl. today`
-                        : `Across ${remainingDays} days`}
-                    </p>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="px-6 sm:px-7 pb-6">
-              <div
-                className={`bb-progress ${progressClass}`}
-                role="progressbar"
-                aria-label="Budget used"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(Math.min(percentUsed, 100))}
+              <svg
+                width="148"
+                height="148"
+                viewBox="0 0 132 132"
+                className="shrink-0"
+                role="img"
+                aria-label={`${Math.round(percentUsed)}% of budget used`}
               >
-                <div style={{ width: `${Math.min(percentUsed, 100)}%` }} />
-              </div>
+                <circle cx="66" cy="66" r="52" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="10" />
+                <circle
+                  cx="66"
+                  cy="66"
+                  r="52"
+                  fill="none"
+                  stroke={ringColor}
+                  strokeWidth="10"
+                  strokeLinecap="round"
+                  strokeDasharray={RING_C}
+                  strokeDashoffset={RING_C * (1 - ringPct / 100)}
+                  transform="rotate(-90 66 66)"
+                  style={{ transition: "stroke-dashoffset 0.6s ease" }}
+                />
+                <text x="66" y="68" textAnchor="middle" fill="#fff" fontSize="28" fontWeight="600" className="bb-display">
+                  {Math.round(percentUsed)}%
+                </text>
+                <text x="66" y="87" textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize="12">
+                  used
+                </text>
+              </svg>
             </div>
 
             {/* Carry over */}
             <div
-              className="px-6 sm:px-7 py-4 border-t bb-divider flex items-center justify-between gap-4"
-              style={{ background: "#fafbfc" }}
+              className="px-6 sm:px-9 py-4 flex items-center justify-between gap-4"
+              style={{ borderTop: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)" }}
             >
               <div className="min-w-0">
-                <p className="m-0 text-sm font-semibold" id="carry-label">Carry over unspent budget</p>
-                <p className="m-0 mt-0.5 text-sm bb-muted">
+                <p className="m-0 text-sm font-semibold" id="carry-label" style={{ color: "#fff" }}>Carry over unspent budget</p>
+                <p className="m-0 mt-0.5 text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>
                   {carriedAvailable > 0
                     ? `${MONTHS[prevMonth - 1]} ${prevEnded ? "had" : "has so far"} ${currency(carriedAvailable)} unspent. Add it to this month’s budget.`
                     : `${MONTHS[prevMonth - 1]} has nothing unspent to carry over.`}
                 </p>
                 {carryOver && carriedAvailable !== carriedAmount && (
-                  <p className="m-0 mt-1 text-sm" style={{ color: "var(--warn)" }}>
+                  <p className="m-0 mt-1 text-sm" style={{ color: "#fcd34d" }}>
                     {MONTHS[prevMonth - 1]}’s unspent is now {currency(carriedAvailable)}, but {currency(carriedAmount)} is carried.{" "}
-                    <button type="button" onClick={refreshCarry} className="bb-linkbtn">Update</button>
+                    <button type="button" onClick={refreshCarry} className="bb-linkbtn" style={{ color: "#fff", textDecoration: "underline" }}>
+                      Update
+                    </button>
                   </p>
                 )}
               </div>
@@ -360,12 +371,78 @@ function ExpenseTracker() {
                 aria-checked={carryOver}
                 aria-labelledby="carry-label"
                 onClick={toggleCarryOver}
-                className="bb-switch"
+                className="bb-switch bb-switch-dark"
               />
             </div>
           </section>
 
-          <div>
+          {/* KPI tiles */}
+          <section className="grid grid-cols-2 lg:grid-cols-4 gap-4" aria-label="Key figures">
+            <div className="bb-card p-5 min-w-0">
+              <span className="bb-chip" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></svg></span>
+              <label htmlFor="budget" className="bb-label block mt-4">Monthly budget</label>
+              <div className="flex items-baseline gap-1 mt-1">
+                <span className="bb-display text-[1.5rem] font-semibold bb-muted">₹</span>
+                <input
+                  id="budget"
+                  type="number"
+                  min="0"
+                  inputMode="decimal"
+                  value={budget}
+                  onChange={(e) => { setBudget(e.target.value); setDirty(true); }}
+                  placeholder="0"
+                  className="bb-display bb-num w-full min-w-0 text-[1.5rem] font-semibold bg-transparent border-0 outline-none p-0"
+                  style={{ color: "var(--ink)", MozAppearance: "textfield" }}
+                />
+              </div>
+              <p className="m-0 mt-1 text-sm bb-muted">Click the number to edit</p>
+            </div>
+
+            <div className="bb-card p-5 min-w-0">
+              <span className="bb-chip" style={{ background: "#fdecea", color: "var(--danger)" }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7" /><polyline points="16 17 22 17 22 11" /></svg></span>
+              <p className="bb-label mt-4 mb-0">Spent</p>
+              <p className="bb-display bb-num m-0 mt-1 text-[1.5rem] font-semibold">{currency(totalSpent)}</p>
+              <p className="m-0 mt-1 text-sm bb-muted bb-num">
+                {validEntries.length} {validEntries.length === 1 ? "transaction" : "transactions"}
+              </p>
+            </div>
+
+            <div className="bb-card p-5 min-w-0">
+              <span className="bb-chip" style={{ background: "#e8f0fe", color: "#1d4ed8" }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg></span>
+              <p className="bb-label mt-4 mb-0">Daily allowance</p>
+              {moneyLeft < 0 || monthEnded || totalBudget <= 0 ? (
+                <>
+                  <p className="bb-display bb-num m-0 mt-1 text-[1.5rem] font-semibold bb-muted">—</p>
+                  <p className="m-0 mt-1 text-sm bb-muted">
+                    {moneyLeft < 0 ? "Budget exceeded" : monthEnded ? "This month has ended" : "Set a budget first"}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="bb-display bb-num m-0 mt-1 text-[1.5rem] font-semibold">
+                    {currency(Math.round(dailyBudgetLeft * 100) / 100)}
+                    <span className="text-sm font-medium bb-muted"> / day</span>
+                  </p>
+                  <p className="m-0 mt-1 text-sm bb-muted">
+                    {isCurrentMonth
+                      ? `${remainingDays} ${remainingDays === 1 ? "day" : "days"} left, incl. today`
+                      : `Across ${remainingDays} days`}
+                  </p>
+                </>
+              )}
+            </div>
+
+            <div className="bb-card p-5 min-w-0">
+              <span className="bb-chip" style={{ background: "var(--warn-soft)", color: "var(--warn)" }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10" /></svg></span>
+              <p className="bb-label mt-4 mb-0">Biggest expense</p>
+              <p className="bb-display bb-num m-0 mt-1 text-[1.5rem] font-semibold">
+                {biggest ? currency(parseFloat(biggest.amount)) : "—"}
+              </p>
+              <p className="m-0 mt-1 text-sm bb-muted truncate">{biggest ? biggest.name : "No expenses yet"}</p>
+            </div>
+          </section>
+
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] items-start">
             {/* Entries */}
             <section className="bb-card overflow-hidden" aria-label="Expense entries">
               <div className="px-5 py-4 flex items-center justify-between border-b bb-divider">
@@ -452,6 +529,86 @@ function ExpenseTracker() {
               </div>
             </section>
 
+            <aside className="space-y-6">
+              {/* Spending by day */}
+              <section className="bb-card p-5 sm:p-6" aria-label="Spending by day">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h2 className="bb-h2 m-0">Spending by day</h2>
+                  <span className="text-sm bb-muted">{MONTHS[month - 1]}</span>
+                </div>
+                {maxDay > 0 ? (
+                  <>
+                    <div
+                      className="mt-5 flex items-end gap-[3px] h-[132px]"
+                      role="img"
+                      aria-label={`Daily spending in ${MONTHS[month - 1]}, highest on day ${peakDay}`}
+                    >
+                      {spendByDay.map((v, i) => (
+                        <div
+                          key={i}
+                          title={`${i + 1} ${MONTHS[month - 1]}: ${currency(v)}`}
+                          className="flex-1 min-w-0 rounded-t-[3px]"
+                          style={{
+                            height: v > 0 ? `${Math.max((v / maxDay) * 100, 4)}%` : "3px",
+                            background:
+                              v > 0
+                                ? isCurrentMonth && i + 1 === now.getDate()
+                                  ? "var(--ink)"
+                                  : "var(--accent)"
+                                : "#e8ecf1",
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <div className="mt-2 flex justify-between text-xs bb-muted bb-num">
+                      <span>1</span>
+                      <span>{Math.ceil(days / 2)}</span>
+                      <span>{days}</span>
+                    </div>
+                    <p className="mt-4 mb-0 text-sm bb-muted">
+                      Highest on day {peakDay}:{" "}
+                      <span className="font-semibold bb-num" style={{ color: "var(--ink)" }}>{currency(maxDay)}</span>
+                    </p>
+                    {undatedCount > 0 && (
+                      <p className="mt-1 mb-0 text-xs bb-muted">
+                        {undatedCount} {undatedCount === 1 ? "expense has" : "expenses have"} no date and aren’t shown.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="mt-4 mb-0 text-sm bb-muted">
+                    Add expenses with dates to see how your spending is spread across the month.
+                  </p>
+                )}
+              </section>
+
+              {/* Top expenses */}
+              <section className="bb-card p-5 sm:p-6" aria-label="Top expenses">
+                <h2 className="bb-h2 m-0">Top expenses</h2>
+                {topExpenses.length > 0 ? (
+                  <ol className="list-none p-0 m-0 mt-5 space-y-4">
+                    {topExpenses.map((e) => {
+                      const amt = parseFloat(e.amount) || 0;
+                      const share = totalSpent > 0 ? Math.round((amt / totalSpent) * 100) : 0;
+                      return (
+                        <li key={e.id}>
+                          <div className="flex items-baseline justify-between gap-3 text-sm">
+                            <span className="truncate font-medium">{e.name}</span>
+                            <span className="bb-num font-semibold shrink-0">{currency(amt)}</span>
+                          </div>
+                          <div className="bb-progress mt-2" style={{ height: 6 }}>
+                            <div style={{ width: `${share}%` }} />
+                          </div>
+                          <p className="m-0 mt-1 text-xs bb-muted bb-num">{share}% of spending</p>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                ) : (
+                  <p className="mt-4 mb-0 text-sm bb-muted">Your largest expenses will appear here.</p>
+                )}
+              </section>
+            </aside>
           </div>
         </div>
       )}
