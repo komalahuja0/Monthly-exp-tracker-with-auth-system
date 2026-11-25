@@ -9,10 +9,9 @@ const aiRoutes = require("./routes/aiRoutes");
 const app = express();
 connectDB();
 
-app.use(cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
-    credentials: true,
-}));
+// Allow your deployed site (CLIENT_URL, no trailing slash) and local development.
+const allowedOrigins = [process.env.CLIENT_URL, "http://localhost:5173"].filter(Boolean);
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 
 app.get("/", (req, res) => {
