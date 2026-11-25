@@ -20,18 +20,6 @@ const leftoverOf = (records, m, y) => {
   return Math.max(0, (rec.budget || 0) + carried - spentOf(rec));
 };
 
-// Makes amounts and percentages in the AI text bold.
-const renderInsight = (text) =>
-  text
-    .split(/((?:₹|Rs\.?)\s?[\d,]+(?:\.\d+)?|\d+(?:\.\d+)?%)/g)
-    .map((part, i) =>
-      i % 2 === 1 ? (
-        <strong key={i} style={{ fontWeight: 700 }}>{part}</strong>
-      ) : (
-        part
-      )
-    );
-
 let nextId = 0;
 const newId = () => `entry-${++nextId}`;
 const emptyEntry = () => ({ id: newId(), name: "", amount: "", date: "" });
@@ -62,10 +50,6 @@ function ExpenseTracker() {
   const [saveState, setSaveState] = useState("idle");
   const [dirty, setDirty] = useState(false);
 
-  const [insight, setInsight] = useState("");
-  const [insightSnapshot, setInsightSnapshot] = useState("");
-  const [insightLoading, setInsightLoading] = useState(false);
-  const [insightError, setInsightError] = useState("");
 
   const token = localStorage.getItem("token");
   const days = daysInMonth(month, year);
@@ -90,9 +74,6 @@ function ExpenseTracker() {
   const remainingDays = monthEnded ? 0 : isCurrentMonth ? days - now.getDate() + 1 : days;
   const dailyBudgetLeft = remainingDays > 0 ? moneyLeft / remainingDays : 0;
 
-  // Used to tell whether the AI summary still matches what's on screen.
-  const dataKey = JSON.stringify([budgetNum, carriedApplied, entries.filter(isValid).map((e) => [e.name.trim(), e.amount, e.date])]);
-  const insightStale = insight !== "" && insightSnapshot !== dataKey;
 
   const statusLabel =
     saveState === "saving" ? "Saving…"
@@ -139,9 +120,6 @@ function ExpenseTracker() {
         setBudget("");
         setEntries([emptyEntry()]);
       }
-      setInsight("");
-      setInsightSnapshot("");
-      setInsightError("");
       setSaveState("idle");
       setDirty(false);
     } catch (error) {
@@ -229,47 +207,6 @@ function ExpenseTracker() {
   const handleMonthChange = (e) => {
     if (dirty && !window.confirm("You have unsaved changes. Switch month and discard them?")) return;
     setMonth(parseInt(e.target.value));
-  };
-
-  const handleGetInsight = async () => {
-    setInsightError("");
-    if (!entries.some(isValid)) {
-      setInsightError("Add at least one expense to get a summary.");
-      return;
-    }
-    if (!totalBudget) {
-      setInsightError("Set a monthly budget to get a summary.");
-      return;
-    }
-    try {
-      setInsightLoading(true);
-      // Make sure the server has the latest numbers before it analyses them.
-      const saved = await persist(entries, budget);
-      if (!saved) {
-        setInsightError("Couldn’t save your latest changes, so the summary wasn’t generated.");
-        return;
-      }
-      const res = await axios.get(`${API}/ai/insights/${month}/${year}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setInsight(res.data.insight || "");
-      setInsightSnapshot(dataKey);
-    } catch (error) {
-      console.log("AI summary error:", error.response?.status, error.response?.data || error.message);
-      const status = error.response?.status;
-      const serverMsg = error.response?.data?.message;
-      if (!error.response) {
-        setInsightError("Couldn’t reach the server. Check your connection and the API URL.");
-      } else if (status === 404) {
-        setInsightError("The summary service wasn’t found on the server (route /api/ai is not mounted).");
-      } else if (status === 401) {
-        setInsightError("Your session has expired. Log out and sign in again.");
-      } else {
-        setInsightError(`Couldn’t generate a summary: ${String(serverMsg || "server error").slice(0, 160)}`);
-      }
-    } finally {
-      setInsightLoading(false);
-    }
   };
 
   return (
@@ -428,7 +365,7 @@ function ExpenseTracker() {
             </div>
           </section>
 
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] items-start">
+          <div>
             {/* Entries */}
             <section className="bb-card overflow-hidden" aria-label="Expense entries">
               <div className="px-5 py-4 flex items-center justify-between border-b bb-divider">
@@ -515,73 +452,6 @@ function ExpenseTracker() {
               </div>
             </section>
 
-            {/* AI summary */}
-            <section
-              className="bb-card p-5 sm:p-6 lg:sticky lg:top-24"
-              aria-label="AI spending summary"
-              aria-busy={insightLoading}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <span
-                    className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                    style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
-                    aria-hidden="true"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 2.5l2.1 6.4 6.4 2.1-6.4 2.1L12 19.5l-2.1-6.4L3.5 11l6.4-2.1L12 2.5z" />
-                    </svg>
-                  </span>
-                  <h2 className="bb-h2 m-0">AI summary</h2>
-                </div>
-                {insight && (
-                  <button
-                    type="button"
-                    onClick={handleGetInsight}
-                    disabled={insightLoading}
-                    className="bb-btn bb-btn-secondary bb-btn-sm"
-                  >
-                    {insightStale ? "Update" : "Refresh"}
-                  </button>
-                )}
-              </div>
-
-              {insightLoading ? (
-                <div className="mt-5 space-y-2.5" role="status" aria-label="Generating summary">
-                  <div className="bb-skeleton h-4 w-full" />
-                  <div className="bb-skeleton h-4 w-[92%]" />
-                  <div className="bb-skeleton h-4 w-[96%]" />
-                  <div className="bb-skeleton h-4 w-2/3" />
-                </div>
-              ) : insight ? (
-                <>
-                  <p
-                    className="mt-4 mb-0 text-[1.0625rem] leading-[1.65] font-medium"
-                    style={{ color: "var(--ink)" }}
-                  >
-                    {renderInsight(insight)}
-                  </p>
-                  {insightStale && (
-                    <p className="mt-4 mb-0 text-sm bb-muted">
-                      You’ve changed your expenses since this summary. Press Update to include them.
-                    </p>
-                  )}
-                </>
-              ) : (
-                <>
-                  <p className="mt-4 mb-5 text-[0.9375rem] bb-muted">
-                    Get a short written summary of this month: how you’re tracking, where most of your money went, and one thing to try.
-                  </p>
-                  <button type="button" onClick={handleGetInsight} className="bb-btn bb-btn-primary w-full">
-                    Summarize this month
-                  </button>
-                </>
-              )}
-
-              {insightError && (
-                <div className="bb-alert bb-alert-error mt-4" role="alert">{insightError}</div>
-              )}
-            </section>
           </div>
         </div>
       )}
