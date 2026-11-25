@@ -20,6 +20,18 @@ const leftoverOf = (records, m, y) => {
   return Math.max(0, (rec.budget || 0) + carried - spentOf(rec));
 };
 
+// Makes amounts and percentages in the AI text bold.
+const renderInsight = (text) =>
+  text
+    .split(/((?:₹|Rs\.?)\s?[\d,]+(?:\.\d+)?|\d+(?:\.\d+)?%)/g)
+    .map((part, i) =>
+      i % 2 === 1 ? (
+        <strong key={i} style={{ fontWeight: 700 }}>{part}</strong>
+      ) : (
+        part
+      )
+    );
+
 let nextId = 0;
 const newId = () => `entry-${++nextId}`;
 const emptyEntry = () => ({ id: newId(), name: "", amount: "", date: "" });
@@ -294,18 +306,19 @@ function ExpenseTracker() {
 
       {loading ? (
         <div className="space-y-5" aria-busy="true">
-          <div className="bb-skeleton h-36 w-full" style={{ borderRadius: 14 }} />
+          <div className="bb-skeleton h-44 w-full" style={{ borderRadius: 14 }} />
           <div className="bb-skeleton h-72 w-full" style={{ borderRadius: 14 }} />
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Summary */}
-          <section className="bb-card p-6 sm:p-7" aria-label="Monthly summary">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-0 sm:divide-x bb-divider">
-              <div className="sm:pr-8">
+          {/* Overview */}
+          <section className="bb-card overflow-hidden" aria-label="Monthly overview">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-7 p-6 sm:p-7">
+              {/* Budget */}
+              <div className="lg:pr-6 min-w-0">
                 <label htmlFor="budget" className="bb-label">Monthly budget</label>
-                <div className="flex items-baseline gap-1 mt-1">
-                  <span className="bb-display text-[1.5rem] font-semibold bb-muted">₹</span>
+                <div className="flex items-baseline gap-1 mt-1.5">
+                  <span className="bb-display text-[1.75rem] font-semibold bb-muted">₹</span>
                   <input
                     id="budget"
                     type="number"
@@ -314,31 +327,83 @@ function ExpenseTracker() {
                     value={budget}
                     onChange={(e) => { setBudget(e.target.value); setDirty(true); }}
                     placeholder="0"
-                    className="bb-display bb-num w-full text-[1.75rem] font-semibold bg-transparent border-0 outline-none p-0"
+                    className="bb-display bb-num w-full min-w-0 text-[1.75rem] font-semibold bg-transparent border-0 outline-none p-0"
                     style={{ color: "var(--ink)", MozAppearance: "textfield" }}
                   />
                 </div>
-                {carriedApplied > 0 && (
-                  <p className="m-0 mt-1 text-sm bb-muted bb-num">+ {currency(carriedApplied)} carried over</p>
-                )}
+                <p className="m-0 mt-1 text-sm bb-muted bb-num">
+                  {carriedApplied > 0 ? `+ ${currency(carriedApplied)} carried over` : "Set this month’s limit"}
+                </p>
               </div>
-              <div className="sm:px-8">
+
+              {/* Spent */}
+              <div className="lg:px-6 lg:border-l bb-divider min-w-0">
                 <p className="bb-label m-0">Spent</p>
-                <p className="bb-display bb-num m-0 mt-1 text-[1.75rem] font-semibold">{currency(totalSpent)}</p>
+                <p className="bb-display bb-num m-0 mt-1.5 text-[1.75rem] font-semibold">{currency(totalSpent)}</p>
+                <p className="m-0 mt-1 text-sm bb-muted bb-num">
+                  {entries.filter(isValid).length} {entries.filter(isValid).length === 1 ? "transaction" : "transactions"}
+                </p>
               </div>
-              <div className="sm:pl-8">
+
+              {/* Remaining */}
+              <div className="lg:px-6 lg:border-l bb-divider min-w-0">
                 <p className="bb-label m-0">{moneyLeft < 0 ? "Over budget by" : "Remaining"}</p>
                 <p
-                  className="bb-display bb-num m-0 mt-1 text-[1.75rem] font-semibold"
+                  className="bb-display bb-num m-0 mt-1.5 text-[1.75rem] font-semibold"
                   style={{ color: moneyLeft < 0 ? "var(--danger)" : "var(--accent)" }}
                 >
                   {currency(Math.abs(moneyLeft))}
                 </p>
+                <p className="m-0 mt-1 text-sm bb-muted bb-num">
+                  {totalBudget > 0 ? `${Math.round(percentUsed)}% of budget used` : "No budget set yet"}
+                </p>
+              </div>
+
+              {/* Daily allowance */}
+              <div className="lg:pl-6 lg:border-l bb-divider min-w-0">
+                <p className="bb-label m-0">Daily allowance</p>
+                {moneyLeft < 0 || monthEnded || totalBudget <= 0 ? (
+                  <>
+                    <p className="bb-display bb-num m-0 mt-1.5 text-[1.75rem] font-semibold bb-muted">—</p>
+                    <p className="m-0 mt-1 text-sm bb-muted">
+                      {moneyLeft < 0 ? "Budget exceeded" : monthEnded ? "This month has ended" : "Set a budget first"}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="bb-display bb-num m-0 mt-1.5 text-[1.75rem] font-semibold">
+                      {currency(Math.round(dailyBudgetLeft * 100) / 100)}
+                      <span className="text-base font-medium bb-muted"> / day</span>
+                    </p>
+                    <p className="m-0 mt-1 text-sm bb-muted">
+                      {isCurrentMonth
+                        ? `${remainingDays} ${remainingDays === 1 ? "day" : "days"} left, incl. today`
+                        : `Across ${remainingDays} days`}
+                    </p>
+                  </>
+                )}
               </div>
             </div>
 
-            <div className="mt-6 pt-5 border-t bb-divider flex items-start justify-between gap-4">
-              <div>
+            <div className="px-6 sm:px-7 pb-6">
+              <div
+                className={`bb-progress ${progressClass}`}
+                role="progressbar"
+                aria-label="Budget used"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(Math.min(percentUsed, 100))}
+              >
+                <div style={{ width: `${Math.min(percentUsed, 100)}%` }} />
+              </div>
+            </div>
+
+            {/* Carry over */}
+            <div
+              className="px-6 sm:px-7 py-4 border-t bb-divider flex items-center justify-between gap-4"
+              style={{ background: "#fafbfc" }}
+            >
+              <div className="min-w-0">
                 <p className="m-0 text-sm font-semibold" id="carry-label">Carry over unspent budget</p>
                 <p className="m-0 mt-0.5 text-sm bb-muted">
                   {carriedAvailable > 0
@@ -348,9 +413,7 @@ function ExpenseTracker() {
                 {carryOver && carriedAvailable !== carriedAmount && (
                   <p className="m-0 mt-1 text-sm" style={{ color: "var(--warn)" }}>
                     {MONTHS[prevMonth - 1]}’s unspent is now {currency(carriedAvailable)}, but {currency(carriedAmount)} is carried.{" "}
-                    <button type="button" onClick={refreshCarry} className="bb-link bg-transparent border-0 p-0 cursor-pointer">
-                      Update
-                    </button>
+                    <button type="button" onClick={refreshCarry} className="bb-linkbtn">Update</button>
                   </p>
                 )}
               </div>
@@ -363,25 +426,9 @@ function ExpenseTracker() {
                 className="bb-switch"
               />
             </div>
-
-            <div className="mt-5">
-              <div
-                className={`bb-progress ${progressClass}`}
-                role="progressbar"
-                aria-label="Budget used"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(Math.min(percentUsed, 100))}
-              >
-                <div style={{ width: `${Math.min(percentUsed, 100)}%` }} />
-              </div>
-              <p className="mt-2 mb-0 text-sm bb-muted bb-num">
-                {totalBudget > 0 ? `${Math.round(percentUsed)}% of your budget used` : "Set a budget to see your progress"}
-              </p>
-            </div>
           </section>
 
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] items-start">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] items-start">
             {/* Entries */}
             <section className="bb-card overflow-hidden" aria-label="Expense entries">
               <div className="px-5 py-4 flex items-center justify-between border-b bb-divider">
@@ -392,8 +439,8 @@ function ExpenseTracker() {
               </div>
 
               <div className="hidden sm:flex items-center gap-2 px-5 pt-3 pb-1 bb-label">
-                <span className="w-[9.5rem] pl-2.5">Date</span>
-                <span className="flex-1 pl-2.5">Description</span>
+                <span className="w-[9.5rem] pl-2.5 text-left">Date</span>
+                <span className="flex-1 pl-2.5 text-left">Description</span>
                 <span className="w-32 pr-2.5 text-right">Amount (₹)</span>
                 <span className="w-9" />
               </div>
@@ -445,7 +492,7 @@ function ExpenseTracker() {
                 ))}
               </ul>
 
-              <div className="px-5 py-3.5 flex items-center justify-between border-t bb-divider" style={{ background: "#fafbfc" }}>
+              <div className="px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 border-t bb-divider" style={{ background: "#fafbfc" }}>
                 <button type="button" onClick={addEntry} className="bb-btn bb-btn-secondary bb-btn-sm">
                   <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
                     <path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -468,84 +515,73 @@ function ExpenseTracker() {
               </div>
             </section>
 
-            {/* Side column */}
-            <aside className="space-y-6">
-              <section className="bb-card p-5" aria-label="Daily allowance">
-                <h2 className="bb-h2 m-0">Daily allowance</h2>
-                {moneyLeft < 0 ? (
-                  <>
-                    <p className="bb-display bb-num m-0 mt-3 text-[1.75rem] font-semibold" style={{ color: "var(--danger)" }}>
-                      {currency(Math.abs(moneyLeft))} over
-                    </p>
-                    <p className="mt-1 mb-0 text-sm bb-muted">You’ve passed this month’s budget.</p>
-                  </>
-                ) : monthEnded ? (
-                  <>
-                    <p className="bb-display bb-num m-0 mt-3 text-[1.75rem] font-semibold">{currency(moneyLeft)}</p>
-                    <p className="mt-1 mb-0 text-sm bb-muted">This month has ended. That’s what you had left.</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="bb-display bb-num m-0 mt-3 text-[1.75rem] font-semibold">
-                      {currency(Math.round(dailyBudgetLeft * 100) / 100)}
-                      <span className="text-base font-medium bb-muted"> / day</span>
-                    </p>
-                    <p className="mt-1 mb-0 text-sm bb-muted">
-                      {isCurrentMonth
-                        ? `For the ${remainingDays} ${remainingDays === 1 ? "day" : "days"} left this month, including today.`
-                        : `Spread across all ${remainingDays} days of the month.`}
-                    </p>
-                  </>
-                )}
-              </section>
-
-              <section className="bb-card p-5" aria-label="AI spending summary" aria-busy={insightLoading}>
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="bb-h2 m-0">Spending summary</h2>
-                  {insight && (
-                    <button
-                      type="button"
-                      onClick={handleGetInsight}
-                      disabled={insightLoading}
-                      className="bb-link text-sm bg-transparent border-0 p-0 cursor-pointer disabled:opacity-50"
-                    >
-                      {insightStale ? "Update" : "Refresh"}
-                    </button>
-                  )}
+            {/* AI summary */}
+            <section
+              className="bb-card p-5 sm:p-6 lg:sticky lg:top-24"
+              aria-label="AI spending summary"
+              aria-busy={insightLoading}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span
+                    className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                    style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+                    aria-hidden="true"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2.5l2.1 6.4 6.4 2.1-6.4 2.1L12 19.5l-2.1-6.4L3.5 11l6.4-2.1L12 2.5z" />
+                    </svg>
+                  </span>
+                  <h2 className="bb-h2 m-0">AI summary</h2>
                 </div>
-
-                {insightLoading ? (
-                  <div className="mt-4 space-y-2.5" role="status" aria-label="Generating summary">
-                    <div className="bb-skeleton h-4 w-full" />
-                    <div className="bb-skeleton h-4 w-[92%]" />
-                    <div className="bb-skeleton h-4 w-[96%]" />
-                    <div className="bb-skeleton h-4 w-2/3" />
-                  </div>
-                ) : insight ? (
-                  <>
-                    <p className="mt-3 mb-0 text-[0.9375rem] leading-relaxed" style={{ color: "var(--ink-2)" }}>
-                      {insight}
-                    </p>
-                    {insightStale && (
-                      <p className="mt-3 mb-0 text-xs bb-muted">You’ve changed your expenses since this summary. Update it to include them.</p>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <p className="mt-2 mb-4 text-sm bb-muted">
-                      Get a short written summary of this month: where most of your money went and whether you’re on track.
-                    </p>
-                    <button type="button" onClick={handleGetInsight} className="bb-btn bb-btn-primary bb-btn-sm w-full">
-                      Summarize this month
-                    </button>
-                  </>
+                {insight && (
+                  <button
+                    type="button"
+                    onClick={handleGetInsight}
+                    disabled={insightLoading}
+                    className="bb-btn bb-btn-secondary bb-btn-sm"
+                  >
+                    {insightStale ? "Update" : "Refresh"}
+                  </button>
                 )}
+              </div>
 
-                {insightError && (
-                  <div className="bb-alert bb-alert-error mt-4" role="alert">{insightError}</div>
-                )}
-              </section>
-            </aside>
+              {insightLoading ? (
+                <div className="mt-5 space-y-2.5" role="status" aria-label="Generating summary">
+                  <div className="bb-skeleton h-4 w-full" />
+                  <div className="bb-skeleton h-4 w-[92%]" />
+                  <div className="bb-skeleton h-4 w-[96%]" />
+                  <div className="bb-skeleton h-4 w-2/3" />
+                </div>
+              ) : insight ? (
+                <>
+                  <p
+                    className="mt-4 mb-0 text-[1.0625rem] leading-[1.65] font-medium"
+                    style={{ color: "var(--ink)" }}
+                  >
+                    {renderInsight(insight)}
+                  </p>
+                  {insightStale && (
+                    <p className="mt-4 mb-0 text-sm bb-muted">
+                      You’ve changed your expenses since this summary. Press Update to include them.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="mt-4 mb-5 text-[0.9375rem] bb-muted">
+                    Get a short written summary of this month: how you’re tracking, where most of your money went, and one thing to try.
+                  </p>
+                  <button type="button" onClick={handleGetInsight} className="bb-btn bb-btn-primary w-full">
+                    Summarize this month
+                  </button>
+                </>
+              )}
+
+              {insightError && (
+                <div className="bb-alert bb-alert-error mt-4" role="alert">{insightError}</div>
+              )}
+            </section>
           </div>
         </div>
       )}

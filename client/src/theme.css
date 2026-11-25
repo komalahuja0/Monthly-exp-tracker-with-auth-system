@@ -171,3 +171,29 @@ body {
   .bb-progress > div { transition: none; }
   .bb-switch, .bb-switch::after { transition: none; }
 }
+
+
+/* ---------------------------------------------------------------
+   Neutralise Vite starter styles (App.css / index.css) that centre the
+   page, restyle every button and recolour links.
+---------------------------------------------------------------- */
+:root { color-scheme: light; }
+#root { max-width: none; width: 100%; margin: 0; padding: 0; text-align: left; }
+body { display: block; place-items: initial; min-width: 0; min-height: 100vh; }
+
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bb-btn-primary, .bb-btn-primary:hover { border-color: transparent; }
+.bb-btn-secondary:hover:not(:disabled) { border-color: var(--line-strong); }
+a.bb-btn-primary, a.bb-btn-primary:hover { color: #fff; }
+a.bb-btn-secondary, a.bb-btn-secondary:hover { color: var(--ink); }
+a.bb-navlink:hover { color: var(--ink); }
+a.bb-navlink.active, a.bb-navlink.active:hover { color: var(--accent); }
+.bb-link:hover { color: var(--accent-hover); }
+.bb-iconbtn { padding: 0; }
+.bb-iconbtn:hover { border-color: transparent; }
+
+.bb-linkbtn {
+  background: none; border: 0; padding: 0; font: inherit; font-weight: 600;
+  color: var(--accent); cursor: pointer;
+}
+.bb-linkbtn:hover { color: var(--accent-hover); text-decoration: underline; text-underline-offset: 3px; }

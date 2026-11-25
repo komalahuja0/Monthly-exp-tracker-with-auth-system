@@ -14,7 +14,7 @@ const callClaude = async (systemPrompt, userMessage) => {
   const body = JSON.stringify({
     systemInstruction: { parts: [{ text: systemPrompt }] },
     contents: [{ role: "user", parts: [{ text: userMessage }] }],
-    generationConfig: { maxOutputTokens: 500 },
+    generationConfig: { maxOutputTokens: 2048 },
   });
 
   for (const model of MODELS) {
@@ -113,19 +113,41 @@ const getInsights = async (req, res) => {
       .map((e) => `${e.name}: Rs.${e.amount}`)
       .join(", ");
 
-    const systemPrompt = `You are a concise personal finance assistant inside a budgeting app.
-Given a user's monthly budget and their list of expenses, give short, genuinely useful insights.
-Keep it to 3-4 short sentences max. Be specific (mention categories/amounts where relevant).
-Mention if they're on track, overspending, or where most money is going.
-Do not use markdown, headers, or bullet points - plain conversational sentences only.
-Do not give generic advice like "track your spending" - they're already doing that here.`;
+    const systemPrompt = `You are a sharp, friendly personal finance assistant inside a budgeting app. Amounts are in Indian rupees; write them with the ₹ symbol.
+Write exactly 3 short, complete sentences of plain text. No markdown, no bullet points, no headings.
+1. Say how they are doing against the budget, using the percentage used and the amount remaining.
+2. Name their biggest expense with its amount and its share of their spending.
+3. Give one specific, practical suggestion based on their real numbers (for example a daily spending limit for the days left, or a category to cut back).
+Use only the numbers provided and do not do your own arithmetic. Never end mid-sentence. Do not give generic advice like "track your spending".`;
 
     const carried = expense.carryOver ? expense.carriedAmount || 0 : 0;
-    const userMessage = `Monthly budget: Rs.${expense.budget + carried}${
-      carried
-        ? ` (Rs.${expense.budget} set, plus Rs.${carried} carried over from last month)`
-        : ""
-    }. Total spent so far: Rs.${totalSpent}. Expenses: ${summary}.`;
+    const totalBudget = (expense.budget || 0) + carried;
+    const remaining = totalBudget - totalSpent;
+    const percentUsed = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
+    const biggest = [...expense.entries].sort((a, b) => b.amount - a.amount)[0];
+    const biggestShare = totalSpent > 0 ? Math.round((biggest.amount / totalSpent) * 100) : 0;
+
+    const now = new Date();
+    const m = Number(month);
+    const y = Number(year);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const isCurrentMonth = now.getFullYear() === y && now.getMonth() + 1 === m;
+    const daysLeft = isCurrentMonth ? daysInMonth - now.getDate() + 1 : null;
+    const perDay = daysLeft && remaining > 0 ? Math.round(remaining / daysLeft) : null;
+
+    const facts = [
+      `Total budget: ₹${totalBudget}${carried ? ` (₹${expense.budget} set plus ₹${carried} carried over from last month)` : ""}`,
+      `Spent so far: ₹${totalSpent} (${percentUsed}% of the budget)`,
+      remaining >= 0 ? `Remaining: ₹${remaining}` : `Over budget by: ₹${Math.abs(remaining)}`,
+      `Biggest expense: "${biggest.name}" at ₹${biggest.amount} (${biggestShare}% of spending)`,
+      daysLeft ? `Days left this month including today: ${daysLeft}` : null,
+      perDay ? `Daily allowance for the rest of the month: ₹${perDay}` : null,
+      `All expenses: ${summary}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const userMessage = facts;
 
     const insight = await callClaude(systemPrompt, userMessage);
 
