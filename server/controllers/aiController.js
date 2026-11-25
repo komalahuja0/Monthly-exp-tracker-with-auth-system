@@ -1,34 +1,49 @@
 const Expense = require("../models/Expense");
 
-const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+// If the first model is overloaded, the next one is tried.
+const MODELS = ["gemini-flash-latest", "gemini-flash-lite-latest"];
+const RETRY_STATUSES = [429, 500, 503];
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const callClaude = async (systemPrompt, userMessage) => {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error("GEMINI_API_KEY is not set on the server");
   }
 
-  const response = await fetch(GEMINI_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": process.env.GEMINI_API_KEY,
-    },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ role: "user", parts: [{ text: userMessage }] }],
-      generationConfig: { maxOutputTokens: 500 },
-    }),
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    contents: [{ role: "user", parts: [{ text: userMessage }] }],
+    generationConfig: { maxOutputTokens: 500 },
   });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`AI API error: ${errText}`);
+  for (const model of MODELS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await fetch(`${GEMINI_BASE}/${model}:generateContent`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": process.env.GEMINI_API_KEY,
+        },
+        body,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        return parts.map((p) => p.text || "").join("");
+      }
+
+      const errText = await response.text();
+      if (!RETRY_STATUSES.includes(response.status)) {
+        throw new Error(`AI API error: ${errText}`);
+      }
+      console.log(`AI model ${model} busy (status ${response.status}), attempt ${attempt + 1}`);
+      await sleep(1000 * (attempt + 1));
+    }
   }
 
-  const data = await response.json();
-  const parts = data.candidates?.[0]?.content?.parts || [];
-  return parts.map((p) => p.text || "").join("");
+  throw new Error("The AI service is busy right now. Please try again in a minute.");
 };
 
 // Parse a natural language sentence like "spent 200 on coffee and 50 on bus"
@@ -113,6 +128,10 @@ Do not give generic advice like "track your spending" - they're already doing th
     }. Total spent so far: Rs.${totalSpent}. Expenses: ${summary}.`;
 
     const insight = await callClaude(systemPrompt, userMessage);
+
+    if (!insight.trim()) {
+      throw new Error("The AI returned an empty response. Please try again.");
+    }
 
     res.status(200).json({ success: true, insight: insight.trim() });
   } catch (error) {
