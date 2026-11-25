@@ -9,8 +9,15 @@ const aiRoutes = require("./routes/aiRoutes");
 const app = express();
 connectDB();
 
-// Allow your deployed site (CLIENT_URL, no trailing slash) and local development.
-const allowedOrigins = [process.env.CLIENT_URL, "http://localhost:5173"].filter(Boolean);
+// Allowed browser origins: CLIENT_URL can hold one or several comma-separated
+// site addresses (trailing slashes are ignored), plus local development.
+const allowedOrigins = [
+    ...(process.env.CLIENT_URL || "").split(","),
+    "http://localhost:5173",
+    "https://monthly-expense-tracker-cyan.vercel.app",
+]
+    .map((o) => o.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 
